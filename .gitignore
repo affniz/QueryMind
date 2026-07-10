@@ -1,0 +1,24 @@
+#Environment variables
+.env
+
+#Virtual environment
+venv/
+env/
+.venv/
+
+#Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+#VS Code settings
+.vscode/
+
+#OS generated files
+.DS_Store
+Thumbs.db
+
+#Distribution/packaging
+dist/
+build/
+*.egg-info
