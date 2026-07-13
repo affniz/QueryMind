@@ -5,15 +5,11 @@ from app.database import get_db
 from app.models import Dataset,Record
 from app.schemas import AskRequest,AskResponse
 from groq import Groq
-from dotenv import load_dotenv
-import os
+from ..config import settings
 import json
 
-load_dotenv()
-
 router = APIRouter()
-key=os.getenv("GROQ_API_KEY")
-client = Groq(api_key=key)
+client = Groq(api_key=settings.GROQ_API_KEY)
 
 def clean_sql(sql:str)->str:
     sql=sql.strip()

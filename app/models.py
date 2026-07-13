@@ -1,7 +1,7 @@
-from sqlalchemy import Column,Integer,String,DateTime,ForeignKey,func
+from sqlalchemy import DateTime,ForeignKey,func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped,mapped_column,relationship
-from datetime import datetime,timezone
+from datetime import datetime
 from app.database import Base
 from typing import Any
 

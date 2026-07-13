@@ -1,8 +1,5 @@
 from fastapi import FastAPI
-from app.database import engine,Base
 from app.routers import datasets,ask
-
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Data Insight API",

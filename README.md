@@ -71,9 +71,6 @@ cd QueryMind
 
 ```
 GROQ_API_KEY=your_groq_api_key_here
-DB_USER=your_username
-DB_PASSWORD=your_password
-DB_NAME=your_db_name
 DATABASE_URL=postgresql+psycopg://your_username:your_password@db:5432/your_db_name
 ```
 
