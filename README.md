@@ -53,6 +53,47 @@ uvicorn app.main:app --reload
 
 Visit `http://127.0.0.1:8000/docs` for interactive API documentation.
 
+## Docker Setup
+
+### Prerequisites
+- Docker
+- Docker Compose
+
+### Steps
+
+### 1. Clone the repository
+```bash
+git clone https://github.com/affniz/QueryMind.git
+cd QueryMind
+```
+
+### 2. Create a '.env' file in the project root
+
+```
+GROQ_API_KEY=your_groq_api_key_here
+DB_USER=your_username
+DB_PASSWORD=your_password
+DB_NAME=your_db_name
+DATABASE_URL=postgresql+psycopg://your_username:your_password@db:5432/your_db_name
+```
+
+### 3. Build & start the containers
+```bash
+docker-compose up --build
+```
+The API will be available at http://localhost:8000
+Swagger UI: http://localhost:8000/docs
+
+### 4. Stop the app
+```bash
+docker-compose down
+```
+
+### 5. Reset the database (optional)
+```bash
+docker-compose down -v
+```
+
 ## API endpoints
 
 | Method | Endpoint | Description |
