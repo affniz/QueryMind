@@ -48,6 +48,7 @@ GROQ_API_KEY=your_groq_api_key_here
 ### Run
 
 ```bash
+alembic upgrade
 uvicorn app.main:app --reload
 ```
 
