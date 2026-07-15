@@ -41,8 +41,12 @@ pip install -r requirements.txt
 Create a `.env` file in the root directory:
 
 ```
-DATABASE_URL=postgresql+psycopg://postgres:yourpassword@localhost/querymind_db
+DATABASE_URL=postgresql+psycopg://your_username:your_password@localhost/your_db_name
+DB_USER=your_username
+DB_PASSWORD=your_password
+DB_NAME=your_db_name
 GROQ_API_KEY=your_groq_api_key_here
+REDIS_URL=redis://redis:6379
 ```
 
 ### Run
@@ -71,8 +75,12 @@ cd QueryMind
 ### 2. Create a '.env' file in the project root
 
 ```
+DATABASE_URL=postgresql+psycopg://your_username:your_password@localhost/your_db_name
+DB_USER=your_username
+DB_PASSWORD=your_password
+DB_NAME=your_db_name
 GROQ_API_KEY=your_groq_api_key_here
-DATABASE_URL=postgresql+psycopg://your_username:your_password@db:5432/your_db_name
+REDIS_URL=redis://redis:6379
 ```
 
 ### 3. Build & start the containers

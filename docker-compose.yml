@@ -13,6 +13,10 @@ services:
       timeout: 30s
       retries: 5
       start_period: 30s
+
+  redis:
+    image: redis:8
+  
   app:
     build: .
     ports:
@@ -20,6 +24,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_started
     environment:
       DATABASE_URL: ${DATABASE_URL}
       GROQ_API_KEY: ${GROQ_API_KEY}

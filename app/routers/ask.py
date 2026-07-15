@@ -7,6 +7,7 @@ from app.schemas import AskRequest,AskResponse
 from groq import Groq
 from ..config import settings
 import json
+from ..cache import cache
 
 router = APIRouter()
 client = Groq(api_key=settings.GROQ_API_KEY)
@@ -56,6 +57,13 @@ def build_answer_prompt(question:str,sql_query:str,results:list)->str:
 
 @router.post("/{dataset_id}/ask",response_model=AskResponse)
 def ask_question(dataset_id:int,request:AskRequest,db:Session=Depends(get_db)):
+    key = f"query:{dataset_id}:{request.question.strip().lower()}"
+    try:
+        cached=cache.get(key)
+        if cached:
+            return json.loads(cached)
+    except:
+        pass
     dataset=db.execute(select(Dataset).where(Dataset.id==dataset_id)).scalar_one_or_none()
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"Dataset with id {dataset_id} not found")
@@ -86,9 +94,14 @@ def ask_question(dataset_id:int,request:AskRequest,db:Session=Depends(get_db)):
     )
     answer = answer_response.choices[0].message.content.strip() # type: ignore[union-attr]
 
-    return AskResponse(
+    response = AskResponse(
         question=request.question,
         sql_query=sql_query,
         answer=answer,
         row_count=len(results)
     )
+    try:
+        cache.set(key,json.dumps(response.model_dump()),ex=86400)
+    except:
+        pass     
+    return response
