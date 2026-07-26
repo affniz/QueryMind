@@ -22,3 +22,8 @@ Thumbs.db
 dist/
 build/
 *.egg-info
+
+#Type checking and test cache
+.mypy_cache/
+.pytest_cache/
+test.db

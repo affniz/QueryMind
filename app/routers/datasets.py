@@ -25,7 +25,7 @@ def upload_csv(file:UploadFile=File(...),db:Session=Depends(get_db)):
     if empty_columns:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"These columns are entirely empty: {empty_columns}. Please clean yourr CSV before uploading."
+            detail=f"These columns are entirely empty: {empty_columns}. Please clean your CSV before uploading."
         )
 
     column_types = {col:str(df[col].dtype) for col in df.columns}

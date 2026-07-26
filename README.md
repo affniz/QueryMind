@@ -14,9 +14,12 @@ A FastAPI backend that lets you upload a CSV and ask plain-English questions abo
 - **PostgreSQL** — data storage
 - **SQLAlchemy 2.0** — ORM and query execution
 - **Groq (LLaMA 3.3 70B)** — LLM for Text-to-SQL and answer generation
+- **Redis** — response caching
 - **Pandas** — CSV parsing
 - **Pydantic** — request/response validation
 - **psycopg** — PostgreSQL driver
+- **pytest + testcontainers** — testing against a real PostgreSQL instance
+- **GitHub Actions** — CI pipeline
 
 ## Getting started
 
@@ -36,6 +39,12 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+For local development and running tests, also install dev dependencies:
+
+```bash
+pip install -r requirements-dev.txt
+```
+
 ### Environment variables
 
 Create a `.env` file in the root directory:
@@ -52,7 +61,7 @@ REDIS_URL=redis://redis:6379
 ### Run
 
 ```bash
-alembic upgrade
+alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
@@ -163,6 +172,28 @@ Response:
 - Invalid dataset ID → `HTTP_404_NOT_FOUND`
 - Question irrelevant to dataset → `HTTP_400_BAD_REQUEST`
 - Generated SQL fails to execute → `HTTP_400_BAD_REQUEST`
+
+## Testing
+
+Tests use pytest and testcontainers to spin up a real throwaway PostgreSQL instance — no manual database setup required. Docker must be running.
+
+```bash
+pytest -v
+```
+
+The test suite covers:
+- Root endpoint
+- CSV upload (valid and invalid)
+- Dataset retrieval and deletion
+- Plain-English question answering (with mocked LLM)
+
+## CI/CD
+
+A GitHub Actions workflow runs the full test suite automatically on every push and pull request to `main`. The workflow:
+
+1. Spins up an `ubuntu-latest` runner (Docker pre-installed)
+2. Installs all dependencies
+3. Runs `pytest` against a testcontainers-managed PostgreSQL instance
 
 ## Planned features
 

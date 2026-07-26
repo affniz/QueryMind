@@ -27,7 +27,7 @@ def build_schema_prompt(dataset:Dataset)->str:
     -'dataset_id'(integer) - a real table column,NOT inside the JSONB. Always filter with: dataset_id={dataset.id}
     -'data'(JSONB) - stores each row's fields. Access with: data->>'field_name' for text, or (data->>'field_name')::float for numbers. 
     compare the question with the schema, if the question is not related to the schema,return exactly "IRRELEVANT" with no other text.
-    only return IRRELEVANT if the question genuinely cannot be answered from these coloumns; if it can be answered by computing or combining existing columns,do that instead
+    only return IRRELEVANT if the question genuinely cannot be answered from these columns; if it can be answered by computing or combining existing columns,do that instead
     When filtering text fields, always use ILIKE with wildcards for flexible matching instead of =.
     for example: data->>'product' ILIKE '%laptop%' instead of data->>'product' = 'Laptop'
     Always filter by dataset_id={dataset.id} using the real column,not JSONB syntax.
@@ -48,10 +48,10 @@ def build_answer_prompt(question:str,sql_query:str,results:list)->str:
     The Following SQL query was run:{sql_query}
     The query returned these results:
     {json.dumps(results,indent=2)}
-    Please provide a clear,consise plain-English answer to the user's question based on these results.
+    Please provide a clear,concise plain-English answer to the user's question based on these results.
     Formatting rules
     - If the answer is a single value or short fact, respond in one plain sentence
-    - If the answer invlolves multiple rows or a list of items, use comma separated list in a single sentence.
+    - If the answer involves multiple rows or a list of items, use comma separated list in a single sentence.
     - Do not use markdown - no asterisk , no bold , no headers
     - Write naturally, as if explaining to someone verbally"""
 
@@ -78,7 +78,7 @@ def ask_question(dataset_id:int,request:AskRequest,db:Session=Depends(get_db)):
     )
     sql_query = sql_response.choices[0].message.content.strip() # type: ignore[union-attr]
     if sql_query=="IRRELEVANT":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail=f"Your Question doesn't apper to be relevant to this dataset. please visit /datasts/{dataset_id} to see the dataset.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail=f"Your question doesn't appear to be relevant to this dataset. Please visit /datasets/{dataset_id} to see the dataset.")
     sql_query = clean_sql(sql_query)
     try:
         results=db.execute(text(sql_query)).mappings().all()

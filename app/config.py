@@ -5,6 +5,6 @@ class Settings(BaseSettings):
     DATABASE_URL:str
     REDIS_URL:str = "redis://redis:6379"
 
-    model_config = SettingsConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(env_file=".env",extra="ignore")
 
 settings = Settings() # type: ignore[call-arg]
