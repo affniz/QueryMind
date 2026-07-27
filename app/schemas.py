@@ -28,3 +28,16 @@ class AskResponse(BaseModel):
     sql_query:str
     answer:str
     row_count:int
+
+class UserCreate(BaseModel):
+    email: str
+    password: str
+
+class UserOut(BaseModel):
+    id: int
+    email: str
+    model_config ={"from_attributes":True}
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str

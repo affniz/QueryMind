@@ -1,14 +1,15 @@
 from fastapi import FastAPI
-from app.routers import datasets,ask
+from app.routers import datasets,ask,auth
 
 app = FastAPI(
     title="Data Insight API",
     description="Upload a CSV and ask plain-English questions about your data",
-    version="1.0.0"
+    version="2.0.0"
 )
 
 app.include_router(datasets.router,prefix="/datasets",tags=["datasets"])
 app.include_router(ask.router,prefix="/datasets",tags=["ask"])
+app.include_router(auth.router)
 
 @app.get("/")
 def root():

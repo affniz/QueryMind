@@ -4,9 +4,10 @@ A FastAPI backend that lets you upload a CSV and ask plain-English questions abo
 
 ## How it works
 
-1. Upload a CSV file via the API
-2. Ask a question in plain English
-3. QueryMind generates a SQL query using an LLM, executes it against your data, and returns a plain-English answer alongside the generated SQL
+1. Register and log in to get a JWT token
+2. Upload a CSV file via the API
+3. Ask a question in plain English
+4. QueryMind generates a SQL query using an LLM, executes it against your data, and returns a plain-English answer alongside the generated SQL
 
 ## Tech stack
 
@@ -18,6 +19,8 @@ A FastAPI backend that lets you upload a CSV and ask plain-English questions abo
 - **Pandas** — CSV parsing
 - **Pydantic** — request/response validation
 - **psycopg** — PostgreSQL driver
+- **python-jose** — JWT token creation and verification
+- **passlib + bcrypt** — password hashing
 - **pytest + testcontainers** — testing against a real PostgreSQL instance
 - **GitHub Actions** — CI pipeline
 
@@ -56,7 +59,12 @@ DB_PASSWORD=your_password
 DB_NAME=your_db_name
 GROQ_API_KEY=your_groq_api_key_here
 REDIS_URL=redis://redis:6379
+SECRET_KEY=your_secret_key_here
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
 ```
+
+> **Note:** `DATABASE_URL` uses `localhost` for local development. When running via Docker, the URL is built automatically by `docker-compose.yml` using `DB_USER`, `DB_PASSWORD`, and `DB_NAME` — you do not need to change it.
 
 ### Run
 
@@ -81,16 +89,20 @@ git clone https://github.com/affniz/QueryMind.git
 cd QueryMind
 ```
 
-### 2. Create a '.env' file in the project root
+### 2. Create a `.env` file in the project root
 
 ```
-DATABASE_URL=postgresql+psycopg://your_username:your_password@localhost/your_db_name
 DB_USER=your_username
 DB_PASSWORD=your_password
 DB_NAME=your_db_name
 GROQ_API_KEY=your_groq_api_key_here
 REDIS_URL=redis://redis:6379
+SECRET_KEY=your_secret_key_here
+ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
 ```
+
+> **Note:** No `DATABASE_URL` needed here — Docker Compose builds it automatically from the variables above.
 
 ### 3. Build & start the containers
 ```bash
@@ -111,20 +123,47 @@ docker-compose down -v
 
 ## API endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/datasets/upload` | Upload a CSV file |
-| `GET` | `/datasets` | List all uploaded datasets |
-| `GET` | `/datasets/{id}` | Get dataset metadata |
-| `DELETE` | `/datasets/{id}` | Delete a dataset and its records |
-| `POST` | `/datasets/{id}/ask` | Ask a plain-English question |
+All `/datasets/` endpoints require an `Authorization: Bearer <token>` header.
+
+| Method | Endpoint | Auth required | Description |
+|--------|----------|:---:|-------------|
+| `POST` | `/auth/register` | ❌ | Register a new user |
+| `POST` | `/auth/login` | ❌ | Log in and receive a JWT token |
+| `POST` | `/datasets/upload` | ✅ | Upload a CSV file |
+| `GET` | `/datasets` | ✅ | List your uploaded datasets |
+| `GET` | `/datasets/{id}` | ✅ | Get dataset metadata |
+| `DELETE` | `/datasets/{id}` | ✅ | Delete a dataset and its records |
+| `POST` | `/datasets/{id}/ask` | ✅ | Ask a plain-English question |
 
 ## Example
+
+### Register and log in
+
+```bash
+# Register
+curl -X POST "http://localhost:8000/auth/register" \
+  -H "Content-Type: application/json" \
+  -d '{"email": "you@example.com", "password": "yourpassword"}'
+
+# Log in — copy the access_token from the response
+curl -X POST "http://localhost:8000/auth/login" \
+  -d "username=you@example.com&password=yourpassword"
+```
+
+Response:
+
+```json
+{
+  "access_token": "eyJhbGciOiJIUzI1NiJ9...",
+  "token_type": "bearer"
+}
+```
 
 ### Upload a CSV
 
 ```bash
 curl -X POST "http://localhost:8000/datasets/upload" \
+  -H "Authorization: Bearer <your_token>" \
   -F "file=@sales.csv"
 ```
 
@@ -150,6 +189,7 @@ Response:
 
 ```bash
 curl -X POST "http://localhost:8000/datasets/1/ask" \
+  -H "Authorization: Bearer <your_token>" \
   -H "Content-Type: application/json" \
   -d '{"question": "which region had the highest revenue?"}'
 ```
@@ -170,8 +210,10 @@ Response:
 - Invalid file type → `HTTP_400_BAD_REQUEST`
 - Empty or malformed CSV → `HTTP_400_BAD_REQUEST`
 - Invalid dataset ID → `HTTP_404_NOT_FOUND`
+- Accessing another user's dataset → `HTTP_404_NOT_FOUND`
 - Question irrelevant to dataset → `HTTP_400_BAD_REQUEST`
 - Generated SQL fails to execute → `HTTP_400_BAD_REQUEST`
+- Missing or invalid token → `HTTP_401_UNAUTHORIZED`
 
 ## Testing
 
@@ -183,6 +225,8 @@ pytest -v
 
 The test suite covers:
 - Root endpoint
+- User registration and login
+- JWT-protected route enforcement
 - CSV upload (valid and invalid)
 - Dataset retrieval and deletion
 - Plain-English question answering (with mocked LLM)
@@ -197,6 +241,6 @@ A GitHub Actions workflow runs the full test suite automatically on every push a
 
 ## Planned features
 
-- **v2** — JWT authentication, per-user dataset isolation
+- **v2** ✅ — JWT authentication, per-user dataset isolation
 - **v3** — Multi-table support with foreign key inference
 - **v4** — Async endpoints for improved performance

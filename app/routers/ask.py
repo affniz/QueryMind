@@ -2,8 +2,9 @@ from fastapi import APIRouter,Depends,HTTPException,status
 from sqlalchemy.orm import Session
 from sqlalchemy import select,text
 from app.database import get_db
-from app.models import Dataset,Record
+from app.models import Dataset,Record,User
 from app.schemas import AskRequest,AskResponse
+from app.auth import get_current_user
 from groq import Groq
 from ..config import settings
 import json
@@ -56,7 +57,7 @@ def build_answer_prompt(question:str,sql_query:str,results:list)->str:
     - Write naturally, as if explaining to someone verbally"""
 
 @router.post("/{dataset_id}/ask",response_model=AskResponse)
-def ask_question(dataset_id:int,request:AskRequest,db:Session=Depends(get_db)):
+def ask_question(dataset_id:int,request:AskRequest,current_user: User = Depends(get_current_user),db:Session=Depends(get_db)):
     key = f"query:{dataset_id}:{request.question.strip().lower()}"
     try:
         cached=cache.get(key)
@@ -64,7 +65,7 @@ def ask_question(dataset_id:int,request:AskRequest,db:Session=Depends(get_db)):
             return json.loads(cached)
     except:
         pass
-    dataset=db.execute(select(Dataset).where(Dataset.id==dataset_id)).scalar_one_or_none()
+    dataset = db.execute(select(Dataset).where(Dataset.id == dataset_id, Dataset.user_id == current_user.id)).scalar_one_or_none()
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"Dataset with id {dataset_id} not found")
     schema_prompt = build_schema_prompt(dataset)

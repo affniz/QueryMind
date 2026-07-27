@@ -4,13 +4,15 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Dataset,Record
 from app.schemas import DatasetResponse
+from app.auth import get_current_user
+from app.models import Dataset, Record, User
 import pandas as pd
 import io
 
 router=APIRouter()
 
 @router.post("/upload",response_model=DatasetResponse)
-def upload_csv(file:UploadFile=File(...),db:Session=Depends(get_db)):
+def upload_csv(file:UploadFile=File(...),current_user: User = Depends(get_current_user),db:Session=Depends(get_db)):
     if not file.filename.endswith(".csv"):# type: ignore[union-attr]
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Only CSV files are accepted.")
     
@@ -33,7 +35,8 @@ def upload_csv(file:UploadFile=File(...),db:Session=Depends(get_db)):
     dataset = Dataset(
         name=file.filename,
         row_count=len(df),
-        columns=column_types
+        columns=column_types,
+        user_id=current_user.id
         )
     db.add(dataset)
     db.flush()
@@ -46,20 +49,20 @@ def upload_csv(file:UploadFile=File(...),db:Session=Depends(get_db)):
     return dataset
 
 @router.get("/",response_model=list[DatasetResponse])
-def get_datasets(db:Session=Depends(get_db)):
-    datasets = db.execute(select(Dataset)).scalars().all()
+def get_datasets(current_user: User = Depends(get_current_user),db:Session=Depends(get_db)):
+    datasets = db.execute(select(Dataset).where(Dataset.user_id == current_user.id)).scalars().all()
     return datasets
 
 @router.get("/{dataset_id}",response_model=DatasetResponse)
-def get_dataset(dataset_id:int,db:Session=Depends(get_db)):
-    dataset = db.execute(select(Dataset).where(Dataset.id==dataset_id)).scalar_one_or_none()
+def get_dataset(dataset_id:int,current_user: User = Depends(get_current_user),db:Session=Depends(get_db)):
+    dataset = db.execute(select(Dataset).where(Dataset.id == dataset_id, Dataset.user_id == current_user.id)).scalar_one_or_none()
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"Dataset with id {dataset_id} not found.")
     return dataset
 
 @router.delete("/{dataset_id}")
-def delete_dataset(dataset_id:int,db:Session=Depends(get_db)):
-    dataset = db.execute(select(Dataset).where(Dataset.id==dataset_id)).scalar_one_or_none()
+def delete_dataset(dataset_id:int,current_user: User = Depends(get_current_user),db:Session=Depends(get_db)):
+    dataset = db.execute(select(Dataset).where(Dataset.id == dataset_id, Dataset.user_id == current_user.id)).scalar_one_or_none()
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"Dataset with id {dataset_id} not found.")
     db.delete(dataset)

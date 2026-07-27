@@ -5,6 +5,15 @@ from datetime import datetime
 from app.database import Base
 from typing import Any
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    email: Mapped[str] = mapped_column(nullable=False, unique=True, index=True)
+    hashed_password: Mapped[str] = mapped_column(nullable=False)
+
+    datasets = relationship("Dataset", back_populates="owner", cascade="all, delete")
+
 class Dataset(Base):
     __tablename__="datasets"
 
@@ -17,8 +26,10 @@ class Dataset(Base):
         )
     row_count:Mapped[int] = mapped_column(nullable=False)
     columns: Mapped[dict[str, Any]] = mapped_column(JSONB,nullable=False)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
 
     records = relationship("Record",back_populates="dataset",cascade="all, delete")
+    owner = relationship("User", back_populates="datasets")
 
 class Record(Base):
     __tablename__="records"
