@@ -12,7 +12,7 @@ A FastAPI backend that lets you upload a CSV and ask plain-English questions abo
 ## Tech stack
 
 - **FastAPI** — API framework
-- **PostgreSQL** — data storage
+- **PostgreSQL** — data storage (with dynamic table creation)
 - **SQLAlchemy 2.0** — ORM and query execution
 - **Groq (LLaMA 3.3 70B)** — LLM for Text-to-SQL and answer generation
 - **Redis** — response caching
@@ -133,7 +133,11 @@ All `/datasets/` endpoints require an `Authorization: Bearer <token>` header.
 | `GET` | `/datasets` | ✅ | List your uploaded datasets |
 | `GET` | `/datasets/{id}` | ✅ | Get dataset metadata |
 | `DELETE` | `/datasets/{id}` | ✅ | Delete a dataset and its records |
-| `POST` | `/datasets/{id}/ask` | ✅ | Ask a plain-English question |
+| `POST` | `/datasets/relationships/` | ✅ | Define a relationship between two datasets |
+| `GET` | `/datasets/relationships/` | ✅ | List all defined relationships |
+| `POST` | `/datasets/relationships/auto-detect` | ✅ | Auto-detect relationships between uploaded datasets |
+| `DELETE`| `/datasets/relationships/{id}` | ✅ | Delete a defined relationship |
+| `POST` | `/datasets/{id}/ask` | ✅ | Ask a plain-English question (supports cross-table queries via relationships) |
 
 ## Example
 
@@ -199,7 +203,7 @@ Response:
 ```json
 {
   "question": "which region had the highest revenue?",
-  "sql_query": "SELECT data->>'region' as region FROM records WHERE dataset_id=1 ORDER BY (data->>'revenue')::float DESC LIMIT 1",
+  "sql_query": "SELECT region FROM u1_ds1_sales ORDER BY revenue DESC LIMIT 1",
   "answer": "The North region had the highest revenue with $120,000.",
   "row_count": 1
 }
@@ -228,8 +232,10 @@ The test suite covers:
 - User registration and login
 - JWT-protected route enforcement
 - CSV upload (valid and invalid)
-- Dataset retrieval and deletion
-- Plain-English question answering (with mocked LLM)
+- Dataset retrieval and deletion (with cascade to relationships)
+- Defining, listing, and deleting relationships
+- Auto-detecting relationships across datasets
+- Plain-English question answering (with mocked LLM, including multi-table JOINs)
 
 ## CI/CD
 
@@ -242,5 +248,5 @@ A GitHub Actions workflow runs the full test suite automatically on every push a
 ## Planned features
 
 - **v2** ✅ — JWT authentication, per-user dataset isolation
-- **v3** — Multi-table support with foreign key inference
+- **v3** ✅ — Multi-table support with dynamic DDL and relationship inference
 - **v4** — Async endpoints for improved performance

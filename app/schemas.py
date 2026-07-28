@@ -10,15 +10,24 @@ class DatasetBase(BaseModel):
 class DatasetResponse(DatasetBase):
     id:int
     uploaded_at:datetime
-
+    table_name:str
     model_config={"from_attributes":True}
 
-class RecordResponse(BaseModel):
+class RelationshipCreate(BaseModel):
+    source_dataset_id:int
+    source_column:str
+    target_dataset_id:int
+    target_column:str
+
+class RelationshipResponse(RelationshipCreate):
     id:int
-    dataset_id:int
-    data:dict
-
     model_config={"from_attributes":True}
+
+class RelationshipSuggestion(RelationshipCreate):
+    confidence:str
+    source_dataset_name:str
+    target_dataset_name:str
+    
 
 class AskRequest(BaseModel):
     question:str

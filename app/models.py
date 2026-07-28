@@ -27,15 +27,18 @@ class Dataset(Base):
     row_count:Mapped[int] = mapped_column(nullable=False)
     columns: Mapped[dict[str, Any]] = mapped_column(JSONB,nullable=False)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    table_name: Mapped[str] = mapped_column(nullable=False, unique=True)
 
-    records = relationship("Record",back_populates="dataset",cascade="all, delete")
     owner = relationship("User", back_populates="datasets")
 
-class Record(Base):
-    __tablename__="records"
+class Relationship(Base):
+    __tablename__ = "relationships"
 
-    id:Mapped[int]=mapped_column(primary_key=True,index=True)
-    dataset_id:Mapped[int]=mapped_column(ForeignKey("datasets.id"),nullable=False)
-    data:Mapped[dict[str,Any]]=mapped_column(JSONB,nullable=False)
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    source_dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id"), nullable=False)
+    source_column: Mapped[str] = mapped_column(nullable=False)
+    target_dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id"), nullable=False)
+    target_column: Mapped[str] = mapped_column(nullable=False)
 
-    dataset = relationship("Dataset",back_populates="records")
+    source_dataset = relationship("Dataset", foreign_keys=[source_dataset_id])
+    target_dataset = relationship("Dataset", foreign_keys=[target_dataset_id])

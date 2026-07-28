@@ -2,12 +2,13 @@ from fastapi import APIRouter,Depends,HTTPException,status
 from sqlalchemy.orm import Session
 from sqlalchemy import select,text
 from app.database import get_db
-from app.models import Dataset,Record,User
+from app.models import Dataset, Relationship, User
 from app.schemas import AskRequest,AskResponse
 from app.auth import get_current_user
 from groq import Groq
 from ..config import settings
 import json
+from fastapi.encoders import jsonable_encoder
 from ..cache import cache
 
 router = APIRouter()
@@ -21,34 +22,43 @@ def clean_sql(sql:str)->str:
         sql=sql.rsplit("'''",1)[0]
     return sql.strip()
 
-def build_schema_prompt(dataset:Dataset)->str:
-    schema_str = json.dumps(dataset.columns,indent=2)
-    return f"""You are a PostgreSQL expert. Given the following table schema,write a valid SQL query to answer the user's question. 
-    The table is called 'records' and has two columns:
-    -'dataset_id'(integer) - a real table column,NOT inside the JSONB. Always filter with: dataset_id={dataset.id}
-    -'data'(JSONB) - stores each row's fields. Access with: data->>'field_name' for text, or (data->>'field_name')::float for numbers. 
-    compare the question with the schema, if the question is not related to the schema,return exactly "IRRELEVANT" with no other text.
-    only return IRRELEVANT if the question genuinely cannot be answered from these columns; if it can be answered by computing or combining existing columns,do that instead
-    When filtering text fields, always use ILIKE with wildcards for flexible matching instead of =.
-    for example: data->>'product' ILIKE '%laptop%' instead of data->>'product' = 'Laptop'
-    Always filter by dataset_id={dataset.id} using the real column,not JSONB syntax.
-    Every selected expression that is not a plain column reference - this includes any JSONB extraction(->>,->), type cast , or computed/arithmetic expression - MUST have an explicit AS alias.
-    Alias names must be normalised: lowercase, with spaces or hyphens replaced by underscores.
-    For example: data->>'Student_Name' must become data->>'Student_Name' AS student_name - never left unaliased, never aliased with mixed case.
-    Return ONLY the raw SQL query, no explanation, no markdown,no backticks. 
+def build_schema_prompt(target_dataset:Dataset,all_datasets:list[Dataset],relationships:list[Relationship])-> str:
+    # Build a description of every table the user has
+    tables_str = ""
+    for ds in all_datasets:
+        cols = "\n".join(f"    - {col} ({dtype})" for col, dtype in ds.columns.items())
+        tables_str += f"\nTable: {ds.table_name}  (from file: {ds.name})\n{cols}\n"
+
+    # Build the relationships section
+    if relationships:
+        rels_str = "\nRelationships (foreign keys):\n"
+        for rel in relationships:
+            rels_str += (
+                f"  - {rel.source_dataset.table_name}.{rel.source_column}"
+                f" → {rel.target_dataset.table_name}.{rel.target_column}\n"
+            )
+    else:
+        rels_str = "\nNo relationships defined between tables.\n"
+
+    return f"""You are a PostgreSQL expert. The user has the following tables:{tables_str}{rels_str}
+    The user is asking about the table '{target_dataset.table_name}' (from file: '{target_dataset.name}'), but you may JOIN with other tables if the question requires it.
+    Rules:
+    - Return ONLY the raw SQL query, no explanation, no markdown, no backticks.
     - PostgreSQL syntax only.
+    - When filtering text columns, use ILIKE with wildcards instead of =. For example: name ILIKE '%alice%'
+    - Every expression that is not a plain column reference (computed values, casts, aggregates) MUST have an explicit AS alias, lowercase with underscores.
+    - If the question is not answerable from these tables, return exactly "IRRELEVANT" with no other text.
+    - Only return IRRELEVANT if the question genuinely cannot be answered; if it can be computed from existing columns, do that instead.
     - Never use OVER() on arbitrary expressions.
     - If an aggregate must be compared to row values, use a CTE or subquery.
-    - Prefer ORDER BY ... LIMIT 1 instead of window functions when only the top row is requested.
-    Schema(column names and types):
-    {schema_str}"""
+    - Prefer ORDER BY ... LIMIT 1 instead of window functions when only the top row is requested."""
 
 def build_answer_prompt(question:str,sql_query:str,results:list)->str:
     return f"""You are a data analyst. A user asked the following question about their data:
     Question: {question}
     The Following SQL query was run:{sql_query}
     The query returned these results:
-    {json.dumps(results,indent=2)}
+    {json.dumps(jsonable_encoder(results), indent=2)}
     Please provide a clear,concise plain-English answer to the user's question based on these results.
     Formatting rules
     - If the answer is a single value or short fact, respond in one plain sentence
@@ -58,7 +68,7 @@ def build_answer_prompt(question:str,sql_query:str,results:list)->str:
 
 @router.post("/{dataset_id}/ask",response_model=AskResponse)
 def ask_question(dataset_id:int,request:AskRequest,current_user: User = Depends(get_current_user),db:Session=Depends(get_db)):
-    key = f"query:{dataset_id}:{request.question.strip().lower()}"
+    key = f"query:{current_user.id}:{dataset_id}:{request.question.strip().lower()}"
     try:
         cached=cache.get(key)
         if cached:
@@ -68,7 +78,10 @@ def ask_question(dataset_id:int,request:AskRequest,current_user: User = Depends(
     dataset = db.execute(select(Dataset).where(Dataset.id == dataset_id, Dataset.user_id == current_user.id)).scalar_one_or_none()
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"Dataset with id {dataset_id} not found")
-    schema_prompt = build_schema_prompt(dataset)
+    all_datasets = db.execute(select(Dataset).where(Dataset.user_id == current_user.id)).scalars().all()
+    owned_ids = [ds.id for ds in all_datasets]
+    relationships = db.execute(select(Relationship).where(Relationship.source_dataset_id.in_(owned_ids),Relationship.target_dataset_id.in_(owned_ids))).scalars().all()
+    schema_prompt = build_schema_prompt(dataset, all_datasets, relationships)
     sql_response = client.chat.completions.create(
         model="llama-3.3-70b-versatile",
         temperature=0,
