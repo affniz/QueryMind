@@ -28,6 +28,7 @@ services:
         condition: service_started
     environment:
       DATABASE_URL: postgresql+psycopg://${DB_USER}:${DB_PASSWORD}@db/${DB_NAME}
+      READONLY_DATABASE_URL: postgresql+psycopg://${READONLY_DB_USER}:${READONLY_DB_PASSWORD}@db/${DB_NAME}
       GROQ_API_KEY: ${GROQ_API_KEY}
       SECRET_KEY: ${SECRET_KEY}
       ALGORITHM: ${ALGORITHM}

@@ -1,6 +1,7 @@
 from unittest.mock import MagicMock, patch
 from tests.utils import upload_csv_helper
 
+
 def test_ask(client, auth_headers):
     data = upload_csv_helper(client, auth_headers, b"name,age\nAlice,30\nBob,25", "test.csv")
     dataset_id = data["id"]
@@ -22,6 +23,7 @@ def test_ask(client, auth_headers):
     assert ans["sql_query"] == f"SELECT name FROM {table_name}"
     assert ans["answer"] == "The names are Alice and Bob."
     assert ans["row_count"] == 2
+
 
 def test_ask_multi_table(client, auth_headers):
     orders = upload_csv_helper(client, auth_headers, b"customer_id,product\n1,laptop", "orders.csv")
@@ -52,3 +54,37 @@ def test_ask_multi_table(client, auth_headers):
 
     assert res.status_code == 200
     assert res.json()["answer"] == "Alice bought a laptop."
+
+
+def test_ask_rejects_drop_table(client, auth_headers):
+    data = upload_csv_helper(client, auth_headers, b"name,age\nAlice,30", "secure.csv")
+    dataset_id = data["id"]
+
+    sql_mock = MagicMock()
+    sql_mock.choices[0].message.content = "DROP TABLE users;"
+
+    with patch("app.routers.ask.client") as mock_client:
+        mock_client.chat.completions.create.return_value = sql_mock
+        res = client.post(f"/datasets/{dataset_id}/ask",
+                          json={"question": "Drop all tables"},
+                          headers=auth_headers)
+
+    assert res.status_code == 400
+    assert "safety validation" in res.json()["detail"]
+
+
+def test_ask_rejects_unauthorized_table(client, auth_headers):
+    data = upload_csv_helper(client, auth_headers, b"name,age\nAlice,30", "safe.csv")
+    dataset_id = data["id"]
+
+    sql_mock = MagicMock()
+    sql_mock.choices[0].message.content = "SELECT * FROM users"
+
+    with patch("app.routers.ask.client") as mock_client:
+        mock_client.chat.completions.create.return_value = sql_mock
+        res = client.post(f"/datasets/{dataset_id}/ask",
+                          json={"question": "Show me all user passwords"},
+                          headers=auth_headers)
+
+    assert res.status_code == 400
+    assert "unauthorized tables" in res.json()["detail"]
