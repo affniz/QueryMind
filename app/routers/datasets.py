@@ -10,6 +10,7 @@ from app.table_manager import (
     create_dynamic_table,
     insert_into_dynamic_table,
     drop_dynamic_table,
+    sanitize_column_name,
 )
 import pandas as pd
 import io
@@ -21,7 +22,7 @@ async def upload_csv(file:UploadFile=File(...),current_user: User = Depends(get_
     if not file.filename.endswith(".csv"):# type: ignore[union-attr]
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Only CSV files are accepted.")
     
-    contents=file.file.read()
+    contents = await file.read()
     df = pd.read_csv(io.BytesIO(contents))
 
     if df.empty:
@@ -35,7 +36,9 @@ async def upload_csv(file:UploadFile=File(...),current_user: User = Depends(get_
             detail=f"These columns are entirely empty: {empty_columns}. Please clean your CSV before uploading."
         )
 
-    column_types = {col:str(df[col].dtype) for col in df.columns}
+    # Store sanitized column names to match the actual DB schema.
+    # The LLM schema prompt uses these names, so they must match the table columns.
+    column_types = {sanitize_column_name(col): str(df[col].dtype) for col in df.columns}
 
     dataset = Dataset(
         name=file.filename,

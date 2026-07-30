@@ -131,7 +131,7 @@ async def ask_question(dataset_id: int,request: AskRequest,current_user: User = 
 
     try:
         raw_results = readonly_db.execute(text(sql_query)).mappings().all()
-        results: list[dict[str, Any]] = [dict(row) for row in raw_results]
+        results: list[dict[str, Any]] = jsonable_encoder([dict(row) for row in raw_results])
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail=f"Generated SQL query failed to execute: {str(e)}")
 

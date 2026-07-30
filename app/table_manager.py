@@ -80,6 +80,5 @@ def insert_into_dynamic_table(engine: sa.Engine, table_name: str, df: pd.DataFra
 
 
 def drop_dynamic_table(engine: sa.Engine, table_name: str) -> None:
-    quoted = sa.quoted_name(table_name, quote=True)
     with engine.begin() as conn:
-        conn.execute(sa.text(f'DROP TABLE IF EXISTS "{quoted}"'))
+        conn.execute(sa.text(f'DROP TABLE IF EXISTS "{table_name}"'))
