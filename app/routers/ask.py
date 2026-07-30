@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 
@@ -77,7 +78,7 @@ def build_answer_prompt(question: str, sql_query: str, results: list) -> str:
 
 
 @router.post("/{dataset_id}/ask", response_model=AskResponse)
-def ask_question(dataset_id: int,request: AskRequest,current_user: User = Depends(get_current_user),db: Session = Depends(get_db),readonly_db: Session = Depends(get_readonly_db)):
+async def ask_question(dataset_id: int,request: AskRequest,current_user: User = Depends(get_current_user),db: Session = Depends(get_db),readonly_db: Session = Depends(get_readonly_db)):
     key = f"query:{current_user.id}:{dataset_id}:{request.question.strip().lower()}"
     try:
         cached = cache.get(key)
@@ -102,7 +103,8 @@ def ask_question(dataset_id: int,request: AskRequest,current_user: User = Depend
     ).scalars().all()
 
     schema_prompt = build_schema_prompt(dataset, all_datasets, relationships)
-    sql_response = client.chat.completions.create(
+    sql_response = await asyncio.to_thread(
+        client.chat.completions.create,
         model="llama-3.3-70b-versatile",
         temperature=0,
         messages=[
@@ -133,7 +135,8 @@ def ask_question(dataset_id: int,request: AskRequest,current_user: User = Depend
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail=f"Generated SQL query failed to execute: {str(e)}")
 
-    answer_response = client.chat.completions.create(
+    answer_response = await asyncio.to_thread(
+        client.chat.completions.create,
         model="llama-3.3-70b-versatile",
         messages=[
             {"role": "user", "content": build_answer_prompt(request.question, sql_query, results)},
@@ -150,6 +153,7 @@ def ask_question(dataset_id: int,request: AskRequest,current_user: User = Depend
         sql_query=sql_query,
         answer=answer,
         row_count=len(results),
+        results=results
     )
     try:
         cache.set(key, json.dumps(response.model_dump()), ex=86400)

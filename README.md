@@ -34,6 +34,7 @@ QueryMind applies two independent layers of protection against SQL injection att
    - Only `SELECT` statements are permitted; `DROP`, `DELETE`, `INSERT`, `UPDATE`, etc. are blocked
    - Multi-statement attacks (e.g. `SELECT ...; DROP TABLE ...`) are rejected
    - All referenced tables are extracted from the AST and checked against an allowlist of the user's own datasets — system tables such as `users` are inaccessible
+   - `WITH ... AS` CTEs are fully supported and validated
 
 2. **Read-only database connection** — All LLM-generated queries execute through a dedicated `readonly_user` PostgreSQL role provisioned automatically via Alembic migration. Even if a query somehow bypassed the guard, the database role itself has no write permissions and no access to system tables.
 
@@ -147,8 +148,9 @@ All `/datasets/` endpoints require an `Authorization: Bearer <token>` header.
 | `POST` | `/auth/register` | ❌ | Register a new user |
 | `POST` | `/auth/login` | ❌ | Log in and receive a JWT token |
 | `POST` | `/datasets/upload` | ✅ | Upload a CSV file |
-| `GET` | `/datasets` | ✅ | List your uploaded datasets |
+| `GET` | `/datasets` | ✅ | List your uploaded datasets (paginated: `?skip=0&limit=20`) |
 | `GET` | `/datasets/{id}` | ✅ | Get dataset metadata |
+| `GET` | `/datasets/{id}/preview` | ✅ | Preview up to 100 raw data rows (`?limit=10`) |
 | `DELETE` | `/datasets/{id}` | ✅ | Delete a dataset and its records |
 | `POST` | `/datasets/relationships/` | ✅ | Define a relationship between two datasets |
 | `GET` | `/datasets/relationships/` | ✅ | List all defined relationships |
@@ -221,7 +223,8 @@ curl -X POST "http://localhost:8000/datasets/1/ask" \
   "question": "who earns the most?",
   "sql_query": "SELECT name FROM u1_ds1_employees ORDER BY salary DESC LIMIT 1",
   "answer": "Diana earns the most with a salary of 95000.",
-  "row_count": 1
+  "row_count": 1,
+  "results": [{"name": "Diana"}]
 }
 ```
 
@@ -239,7 +242,12 @@ curl -X POST "http://localhost:8000/datasets/1/ask" \
   "question": "what is the average salary per department?",
   "sql_query": "SELECT d.name AS department_name, AVG(e.salary) AS average_salary FROM u1_ds1_employees e JOIN u1_ds2_departments d ON e.department_id = d.id GROUP BY d.name ORDER BY average_salary DESC",
   "answer": "The average salaries per department are Product with 95000, Engineering with 87500, and Marketing with 72500.",
-  "row_count": 3
+  "row_count": 3,
+  "results": [
+    {"department_name": "Product", "average_salary": 95000},
+    {"department_name": "Engineering", "average_salary": 87500},
+    {"department_name": "Marketing", "average_salary": 72500}
+  ]
 }
 ```
 
@@ -271,9 +279,13 @@ The test suite covers:
 - JWT-protected route enforcement
 - CSV upload (valid and invalid)
 - Dataset retrieval and deletion (with cascade to relationships)
+- Pagination on dataset listing
+- Dataset row preview via read-only connection
 - Defining, listing, and deleting relationships
 - Auto-detecting relationships across datasets
 - Plain-English question answering (with mocked LLM, including multi-table JOINs)
+- CTE (`WITH ... AS`) queries accepted by the SQL guard
+- `results` field present and matching `row_count` in ask responses
 - SQL injection blocking — `DROP TABLE` attacks rejected
 - Prompt injection blocking — unauthorized table access rejected
 
@@ -295,4 +307,4 @@ A GitHub Actions workflow runs the full test suite automatically on every push a
 
 - **v3.1** ✅ — Security hardening and performance. SQL injection protection via `sqlparse` (SELECT-only allowlist, table allowlist). Read-only PostgreSQL role provisioned automatically via Alembic migration. High-speed CSV ingestion using PostgreSQL `COPY` protocol (~30× faster than row-by-row INSERT). Specific exception handling with structured logging throughout.
 
-- **v4** — Async endpoints for improved throughput under concurrent load.
+- **v4** ✅ — Developer experience and API completeness. All endpoints converted to `async def`; Groq API calls offloaded via `asyncio.to_thread` for non-blocking concurrency. `GET /datasets/{id}/preview` endpoint returns raw data rows via read-only connection. `GET /datasets/` is paginated (`skip`/`limit`). `/ask` responses now include the raw `results` rows alongside the plain-English answer. SQL guard extended to accept `WITH ... AS` CTEs. `User` model gains a `created_at` timestamp.

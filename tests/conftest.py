@@ -79,8 +79,9 @@ def client(db_engine, readonly_engine):
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_readonly_db] = override_get_readonly_db
     with patch("app.routers.datasets.engine", db_engine):
-        with TestClient(app) as test_client:
-            yield test_client
+        with patch("app.routers.datasets.readonly_engine", readonly_engine):
+            with TestClient(app) as test_client:
+                yield test_client
     app.dependency_overrides.clear()
 
 

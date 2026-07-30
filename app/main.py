@@ -4,7 +4,7 @@ from app.routers import datasets,ask,auth,relationships
 app = FastAPI(
     title="Data Insight API",
     description="Upload a CSV and ask plain-English questions about your data",
-    version="3.1.0"
+    version="4.0.0"
 )
 
 app.include_router(datasets.router,prefix="/datasets",tags=["datasets"])

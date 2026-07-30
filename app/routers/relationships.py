@@ -8,16 +8,16 @@ from app.auth import get_current_user
 
 router = APIRouter()
 
-def _get_owned_dataset(dataset_id: int, user_id: int, db: Session) -> Dataset:
+async def _get_owned_dataset(dataset_id: int, user_id: int, db: Session) -> Dataset:
     dataset = db.execute(select(Dataset).where(Dataset.id == dataset_id, Dataset.user_id == user_id)).scalar_one_or_none()
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"Dataset with id {dataset_id} not found.")
     return dataset
 
 @router.post("/", response_model=RelationshipResponse, status_code=status.HTTP_201_CREATED)
-def create_relationship(body: RelationshipCreate,current_user:User=Depends(get_current_user),db:Session=Depends(get_db)):
-    source = _get_owned_dataset(body.source_dataset_id, current_user.id, db)
-    target = _get_owned_dataset(body.target_dataset_id, current_user.id, db)
+async def create_relationship(body: RelationshipCreate,current_user:User=Depends(get_current_user),db:Session=Depends(get_db)):
+    source = await _get_owned_dataset(body.source_dataset_id, current_user.id, db)
+    target = await _get_owned_dataset(body.target_dataset_id, current_user.id, db)
 
     if body.source_column not in source.columns:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail=f"Column '{body.source_column}' not found in source dataset.")
@@ -38,7 +38,7 @@ def create_relationship(body: RelationshipCreate,current_user:User=Depends(get_c
     return rel
 
 @router.get("/", response_model=list[RelationshipResponse])
-def list_relationships(current_user:User=Depends(get_current_user),db:Session=Depends(get_db)):
+async def list_relationships(current_user:User=Depends(get_current_user),db:Session=Depends(get_db)):
     owned_ids = db.execute(select(Dataset.id).where(Dataset.user_id == current_user.id)).scalars().all()
 
     relationships = db.execute(
@@ -50,20 +50,20 @@ def list_relationships(current_user:User=Depends(get_current_user),db:Session=De
     return relationships
 
 @router.delete("/{relationship_id}")
-def delete_relationship(relationship_id: int,current_user: User = Depends(get_current_user),db: Session = Depends(get_db)):
+async def delete_relationship(relationship_id: int,current_user: User = Depends(get_current_user),db: Session = Depends(get_db)):
     rel = db.execute(select(Relationship).where(Relationship.id == relationship_id)).scalar_one_or_none()
     if not rel:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"Relationship with id {relationship_id} not found.")
 
-    _get_owned_dataset(rel.source_dataset_id, current_user.id, db)
-    _get_owned_dataset(rel.target_dataset_id, current_user.id, db)
+    await _get_owned_dataset(rel.source_dataset_id, current_user.id, db)
+    await _get_owned_dataset(rel.target_dataset_id, current_user.id, db)
 
     db.delete(rel)
     db.commit()
     return {"message": f"Relationship {relationship_id} deleted successfully."}
 
 @router.post("/auto-detect", response_model=list[RelationshipSuggestion])
-def auto_detect_relationships(current_user: User = Depends(get_current_user),db: Session = Depends(get_db)):
+async def auto_detect_relationships(current_user: User = Depends(get_current_user),db: Session = Depends(get_db)):
     datasets = db.execute(select(Dataset).where(Dataset.user_id == current_user.id)).scalars().all()
     suggestions = []
 

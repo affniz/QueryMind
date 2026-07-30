@@ -37,6 +37,7 @@ class AskResponse(BaseModel):
     sql_query:str
     answer:str
     row_count:int
+    results: list[dict]
 
 class UserCreate(BaseModel):
     email: str
@@ -45,6 +46,7 @@ class UserCreate(BaseModel):
 class UserOut(BaseModel):
     id: int
     email: str
+    created_at: datetime  
     model_config ={"from_attributes":True}
 
 class Token(BaseModel):

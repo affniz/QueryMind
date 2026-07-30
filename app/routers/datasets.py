@@ -1,7 +1,7 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from sqlalchemy import select,or_
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Query
+from sqlalchemy import select, or_, text
 from sqlalchemy.orm import Session
-from app.database import get_db, engine
+from app.database import get_db, engine, readonly_engine
 from app.models import Dataset, Relationship, User
 from app.schemas import DatasetResponse
 from app.auth import get_current_user
@@ -17,7 +17,7 @@ import io
 router = APIRouter()
 
 @router.post("/upload",response_model=DatasetResponse)
-def upload_csv(file:UploadFile=File(...),current_user: User = Depends(get_current_user),db:Session=Depends(get_db)):
+async def upload_csv(file:UploadFile=File(...),current_user: User = Depends(get_current_user),db:Session=Depends(get_db)):
     if not file.filename.endswith(".csv"):# type: ignore[union-attr]
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Only CSV files are accepted.")
     
@@ -63,19 +63,43 @@ def upload_csv(file:UploadFile=File(...),current_user: User = Depends(get_curren
     return dataset
 
 @router.get("/",response_model=list[DatasetResponse])
-def get_datasets(current_user: User = Depends(get_current_user),db:Session=Depends(get_db)):
-    datasets = db.execute(select(Dataset).where(Dataset.user_id == current_user.id)).scalars().all()
+async def get_datasets(current_user: User = Depends(get_current_user),db:Session=Depends(get_db),
+    skip: int = Query(0, ge=0, description="Number of datasets to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Max datasets to return")):
+    datasets = db.execute(select(Dataset).where(Dataset.user_id == current_user.id).offset(skip).limit(limit)).scalars().all()
     return datasets
 
 @router.get("/{dataset_id}",response_model=DatasetResponse)
-def get_dataset(dataset_id:int,current_user: User = Depends(get_current_user),db:Session=Depends(get_db)):
+async def get_dataset(dataset_id:int,current_user: User = Depends(get_current_user),db:Session=Depends(get_db)):
     dataset = db.execute(select(Dataset).where(Dataset.id == dataset_id, Dataset.user_id == current_user.id)).scalar_one_or_none()
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"Dataset with id {dataset_id} not found.")
     return dataset
 
+@router.get("/{dataset_id}/preview")
+async def preview_dataset(
+    dataset_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    limit: int = Query(10, ge=1, le=100, description="Number of rows to preview"),
+):
+    dataset = db.execute(
+        select(Dataset).where(Dataset.id == dataset_id, Dataset.user_id == current_user.id)
+    ).scalar_one_or_none()
+    if not dataset:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset {dataset_id} not found.")
+
+    with readonly_engine.connect() as conn:
+        rows = conn.execute(
+            text(f'SELECT * FROM "{dataset.table_name}" LIMIT :limit'),
+            {"limit": limit},
+        ).mappings().all()
+
+    return {"dataset_id": dataset_id, "table_name": dataset.table_name, "rows": [dict(r) for r in rows]}
+
+
 @router.delete("/{dataset_id}")
-def delete_dataset(dataset_id:int,current_user: User = Depends(get_current_user),db:Session=Depends(get_db)):
+async def delete_dataset(dataset_id:int,current_user: User = Depends(get_current_user),db:Session=Depends(get_db)):
     dataset = db.execute(select(Dataset).where(Dataset.id == dataset_id, Dataset.user_id == current_user.id)).scalar_one_or_none()
     if not dataset:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,detail=f"Dataset with id {dataset_id} not found.")

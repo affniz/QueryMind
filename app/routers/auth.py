@@ -10,7 +10,7 @@ from app.auth import create_access_token
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 @router.post("/register", response_model=schemas.UserOut, status_code=status.HTTP_201_CREATED)
-def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
+async def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     existing = db.execute(select(models.User).where(models.User.email == user.email)).scalar_one_or_none()
     if existing:
         raise HTTPException(
@@ -27,7 +27,7 @@ def register(user: schemas.UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 @router.post("/login", response_model=schemas.Token)
-def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+async def login(form: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = db.execute(select(models.User).where(models.User.email == form.username)).scalar_one_or_none()
     if not user or not verify_password(form.password, user.hashed_password):
         raise HTTPException(

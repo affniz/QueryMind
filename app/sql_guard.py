@@ -1,3 +1,4 @@
+import re
 import sqlparse
 from sqlparse.sql import Statement, Identifier, IdentifierList, Parenthesis
 from sqlparse.tokens import Keyword, Name
@@ -38,6 +39,11 @@ def _extract_table_names(stmt: Statement) -> set[str]:
         if isinstance(token, Parenthesis):
             for sub_stmt in sqlparse.parse(token.value[1:-1]):
                 tables.update(_extract_table_names(sub_stmt))
+        if isinstance(token, Identifier):
+            for sub_token in token.tokens:
+                if isinstance(sub_token, Parenthesis):
+                    for sub_stmt in sqlparse.parse(sub_token.value[1:-1]):
+                        tables.update(_extract_table_names(sub_stmt))
 
     return tables
 
@@ -52,13 +58,17 @@ def validate_sql(sql: str, allowed_tables: set[str]) -> str:
 
     stmt = statements[0]
     stmt_type = stmt.get_type()
-    if stmt_type != "SELECT":
+    is_cte = sql.strip().upper().startswith("WITH")
+
+    if stmt_type != "SELECT" and not is_cte:
         raise UnsafeSQLError(
             f"Only SELECT statements are allowed, got: {stmt_type}"
         )
 
+    cte_aliases = {m.group(1).lower() for m in re.finditer(r'(\w+)\s+AS\s*\(', sql, re.IGNORECASE)}
+
     referenced_tables = _extract_table_names(stmt)
-    disallowed = referenced_tables - {t.lower() for t in allowed_tables}
+    disallowed = referenced_tables - {t.lower() for t in allowed_tables} - cte_aliases
     if disallowed:
         raise UnsafeSQLError(
             f"Query references unauthorized tables: {disallowed}"

@@ -23,6 +23,9 @@ def test_ask(client, auth_headers):
     assert ans["sql_query"] == f"SELECT name FROM {table_name}"
     assert ans["answer"] == "The names are Alice and Bob."
     assert ans["row_count"] == 2
+    assert "results" in ans
+    assert isinstance(ans["results"], list)
+    assert len(ans["results"]) == ans["row_count"]
 
 
 def test_ask_multi_table(client, auth_headers):
@@ -88,3 +91,22 @@ def test_ask_rejects_unauthorized_table(client, auth_headers):
 
     assert res.status_code == 400
     assert "unauthorized tables" in res.json()["detail"]
+
+
+def test_ask_cte(client, auth_headers):
+    data = upload_csv_helper(client, auth_headers, b"name,age\nAlice,30\nBob,25", "cte_test.csv")
+    dataset_id = data["id"]
+    table_name = data["table_name"]
+
+    cte_sql = f"WITH ranked AS (SELECT name, age FROM {table_name}) SELECT name FROM ranked"
+    sql_mock = MagicMock()
+    sql_mock.choices[0].message.content = cte_sql
+    answer_mock = MagicMock()
+    answer_mock.choices[0].message.content = "The names are Alice and Bob."
+
+    with patch("app.routers.ask.client") as mock_client:
+        mock_client.chat.completions.create.side_effect = [sql_mock, answer_mock]
+        res = client.post(f"/datasets/{dataset_id}/ask", json={"question": "List all names"}, headers=auth_headers)
+
+    assert res.status_code == 200
+    assert res.json()["row_count"] == 2
