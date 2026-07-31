@@ -29,7 +29,10 @@ def sanitize_column_name(name: str) -> str:
 def generate_table_name(user_id: int, dataset_id: int, filename: str) -> str:
     base = filename.rsplit(".", 1)[0]
     sanitized = sanitize_column_name(base)
-    return f"u{user_id}_ds{dataset_id}_{sanitized}"
+    prefix = f"u{user_id}_ds{dataset_id}_"
+    # PostgreSQL identifier limit is 63 characters; truncate filename to fit
+    max_filename_len = 63 - len(prefix)
+    return f"{prefix}{sanitized[:max_filename_len]}"
 
 
 def create_dynamic_table(engine: sa.Engine, table_name: str, df: pd.DataFrame) -> None:

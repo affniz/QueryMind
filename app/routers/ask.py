@@ -26,6 +26,12 @@ client = Groq(api_key=settings.GROQ_API_KEY)
 
 def clean_sql(sql: str) -> str:
     sql = sql.strip()
+    # Strip markdown backtick fences (most common LLM output format)
+    if sql.startswith("```"):
+        sql = sql.split("\n", 1)[-1]  # drop first line (e.g. ```sql)
+    if sql.endswith("```"):
+        sql = sql.rsplit("```", 1)[0]
+    # Strip triple-quote fences
     if sql.startswith("'''"):
         sql = sql.split("\n", 1)[-1]
     if sql.endswith("'''"):
@@ -156,7 +162,8 @@ async def ask_question(dataset_id: int,request: AskRequest,current_user: User = 
         results=results
     )
     try:
-        cache.set(key, json.dumps(response.model_dump()), ex=86400)
-    except redis_lib.RedisError as e:
+        # Use jsonable_encoder to handle datetime, Decimal, UUID etc. before json.dumps
+        cache.set(key, json.dumps(jsonable_encoder(response.model_dump())), ex=86400)
+    except Exception as e:
         logger.warning("Redis cache write failed: %s", e)
     return response

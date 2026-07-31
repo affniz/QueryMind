@@ -14,8 +14,10 @@ class UnsafeSQLError(Exception):
     pass
 
 
-def _extract_table_names(stmt: Statement) -> set[str]:
+def _extract_table_names(stmt: Statement) -> tuple[set[str], set[str]]:
+    """Return (referenced_tables, subquery_aliases)."""
     tables: set[str] = set()
+    aliases: set[str] = set()
     from_seen = False
 
     for token in stmt.tokens:
@@ -25,27 +27,58 @@ def _extract_table_names(stmt: Statement) -> set[str]:
             from_seen = False
         elif from_seen:
             if isinstance(token, Identifier):
-                name = token.get_real_name()
-                if name:
-                    tables.add(name.lower())
+                # If this identifier wraps a subquery, record its alias, not the token itself
+                inner = next(
+                    (t for t in token.tokens if isinstance(t, Parenthesis)), None
+                )
+                if inner is not None:
+                    alias = token.get_alias() or token.get_real_name()
+                    if alias:
+                        aliases.add(alias.lower())
+                    # Recurse into the subquery
+                    for sub_stmt in sqlparse.parse(inner.value[1:-1]):
+                        sub_tables, sub_aliases = _extract_table_names(sub_stmt)
+                        tables.update(sub_tables)
+                        aliases.update(sub_aliases)
+                else:
+                    name = token.get_real_name()
+                    if name:
+                        tables.add(name.lower())
             elif isinstance(token, IdentifierList):
                 for ident in token.get_identifiers():
                     if isinstance(ident, Identifier):
-                        name = ident.get_real_name()
-                        if name:
-                            tables.add(name.lower())
+                        inner = next(
+                            (t for t in ident.tokens if isinstance(t, Parenthesis)), None
+                        )
+                        if inner is not None:
+                            alias = ident.get_alias() or ident.get_real_name()
+                            if alias:
+                                aliases.add(alias.lower())
+                            for sub_stmt in sqlparse.parse(inner.value[1:-1]):
+                                sub_tables, sub_aliases = _extract_table_names(sub_stmt)
+                                tables.update(sub_tables)
+                                aliases.update(sub_aliases)
+                        else:
+                            name = ident.get_real_name()
+                            if name:
+                                tables.add(name.lower())
             elif token.ttype is Name:
                 tables.add(token.value.lower())
+        # Top-level parentheses (e.g. CTEs, subqueries not in FROM)
         if isinstance(token, Parenthesis):
             for sub_stmt in sqlparse.parse(token.value[1:-1]):
-                tables.update(_extract_table_names(sub_stmt))
+                sub_tables, sub_aliases = _extract_table_names(sub_stmt)
+                tables.update(sub_tables)
+                aliases.update(sub_aliases)
         if isinstance(token, Identifier):
             for sub_token in token.tokens:
                 if isinstance(sub_token, Parenthesis):
                     for sub_stmt in sqlparse.parse(sub_token.value[1:-1]):
-                        tables.update(_extract_table_names(sub_stmt))
+                        sub_tables, sub_aliases = _extract_table_names(sub_stmt)
+                        tables.update(sub_tables)
+                        aliases.update(sub_aliases)
 
-    return tables
+    return tables, aliases
 
 
 def validate_sql(sql: str, allowed_tables: set[str]) -> str:
@@ -67,8 +100,9 @@ def validate_sql(sql: str, allowed_tables: set[str]) -> str:
 
     cte_aliases = {m.group(1).lower() for m in re.finditer(r'(\w+)\s+AS\s*\(', sql, re.IGNORECASE)}
 
-    referenced_tables = _extract_table_names(stmt)
-    disallowed = referenced_tables - {t.lower() for t in allowed_tables} - cte_aliases
+    referenced_tables, subquery_aliases = _extract_table_names(stmt)
+    excluded = {t.lower() for t in allowed_tables} | cte_aliases | subquery_aliases
+    disallowed = referenced_tables - excluded
     if disallowed:
         raise UnsafeSQLError(
             f"Query references unauthorized tables: {disallowed}"

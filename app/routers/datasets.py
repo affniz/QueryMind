@@ -17,7 +17,7 @@ import io
 
 router = APIRouter()
 
-@router.post("/upload",response_model=DatasetResponse)
+@router.post("/upload", response_model=DatasetResponse, status_code=status.HTTP_201_CREATED)
 async def upload_csv(file:UploadFile=File(...),current_user: User = Depends(get_current_user),db:Session=Depends(get_db)):
     if not file.filename.endswith(".csv"):# type: ignore[union-attr]
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Only CSV files are accepted.")
@@ -38,7 +38,16 @@ async def upload_csv(file:UploadFile=File(...),current_user: User = Depends(get_
 
     # Store sanitized column names to match the actual DB schema.
     # The LLM schema prompt uses these names, so they must match the table columns.
-    column_types = {sanitize_column_name(col): str(df[col].dtype) for col in df.columns}
+    column_types: dict[str, str] = {}
+    for col in df.columns:
+        safe_name = sanitize_column_name(col)
+        if safe_name in column_types:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Column name collision after sanitization: '{safe_name}' is produced by multiple columns. "
+                       f"Please rename ambiguous columns before uploading."
+            )
+        column_types[safe_name] = str(df[col].dtype)
 
     dataset = Dataset(
         name=file.filename,
