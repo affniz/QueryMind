@@ -4,6 +4,7 @@ Runs once at container startup, before the API server starts.
 """
 import os
 import psycopg
+from psycopg import sql
 
 READONLY_USER = os.environ.get("READONLY_DB_USER", "readonly_user")
 READONLY_PASSWORD = os.environ.get("READONLY_DB_PASSWORD")
@@ -24,15 +25,19 @@ def setup_readonly_user() -> None:
             )
             if cur.fetchone() is None:
                 cur.execute(
-                    f"CREATE USER {READONLY_USER} WITH PASSWORD %s",
-                    (READONLY_PASSWORD,),
+                    sql.SQL("CREATE USER {} WITH PASSWORD {}").format(
+                        sql.Identifier(READONLY_USER),
+                        sql.Literal(READONLY_PASSWORD),
+                    )
                 )
                 print(f"[setup_readonly] Created user {READONLY_USER!r}")
             else:
                 # Always refresh the password in case it changed
                 cur.execute(
-                    f"ALTER USER {READONLY_USER} WITH PASSWORD %s",
-                    (READONLY_PASSWORD,),
+                    sql.SQL("ALTER USER {} WITH PASSWORD {}").format(
+                        sql.Identifier(READONLY_USER),
+                        sql.Literal(READONLY_PASSWORD),
+                    )
                 )
                 print(f"[setup_readonly] User {READONLY_USER!r} already exists, password updated.")
 
