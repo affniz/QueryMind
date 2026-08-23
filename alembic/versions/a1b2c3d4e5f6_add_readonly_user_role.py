@@ -18,6 +18,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # Ensure the app user always has write access to alembic_version
+    # (Render managed DBs can have ownership quirks between deploys).
+    op.execute("GRANT ALL ON TABLE alembic_version TO CURRENT_USER;")
+
     try:
         parsed = make_url(settings.READONLY_DATABASE_URL)
     except Exception:

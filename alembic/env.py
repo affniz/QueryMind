@@ -1,6 +1,6 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
+from sqlalchemy import engine_from_config, text
 from sqlalchemy import pool
 
 from alembic import context
@@ -65,6 +65,16 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
+        # On Render, the managed DB user may not own alembic_version if it was
+        # created by a different role. Ensure we always have write access.
+        try:
+            connection.execute(
+                text("GRANT ALL ON TABLE alembic_version TO CURRENT_USER")
+            )
+            connection.commit()
+        except Exception:
+            pass  # Table may not exist yet on first deploy — that's fine.
+
         context.configure(
             connection=connection, target_metadata=target_metadata
         )
