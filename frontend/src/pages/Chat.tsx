@@ -9,7 +9,7 @@ import DataTable from '../components/chat/DataTable';
 import MessageList from '../components/chat/MessageList';
 import ChatInput from '../components/chat/ChatInput';
 
-const API_BASE = 'http://127.0.0.1:8000';
+const API_BASE = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000';
 
 const MAX_HISTORY_TURNS = 3;
 
