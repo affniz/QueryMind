@@ -18,15 +18,17 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    # Ensure the app user always has write access to alembic_version
-    # (Render managed DBs can have ownership quirks between deploys).
-    op.execute("GRANT ALL ON TABLE alembic_version TO CURRENT_USER;")
-
     try:
         parsed = make_url(settings.READONLY_DATABASE_URL)
+        main_parsed = make_url(settings.DATABASE_URL)
     except Exception:
         # READONLY_DATABASE_URL not yet set (e.g. first deploy on Render).
-        # setup_readonly.py handles role creation at container startup instead.
+        return
+
+    # If READONLY_DATABASE_URL was not explicitly configured, config.py falls
+    # back to DATABASE_URL — they share the same username. Proceeding would
+    # REVOKE the app user's own privileges on alembic_version and other tables.
+    if parsed.username == main_parsed.username:
         return
 
     username = parsed.username

@@ -65,15 +65,18 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        # On Render, the managed DB user may not own alembic_version if it was
-        # created by a different role. Ensure we always have write access.
+        # On Render, the app user may have lost UPDATE on alembic_version if a
+        # previous migration accidentally revoked its own access. Restore it here
+        # using a SAVEPOINT so that a failure (table doesn't exist yet on a
+        # completely fresh DB) never aborts the outer transaction.
+        connection.execute(text("SAVEPOINT pre_migration_grant"))
         try:
             connection.execute(
                 text("GRANT ALL ON TABLE alembic_version TO CURRENT_USER")
             )
-            connection.commit()
+            connection.execute(text("RELEASE SAVEPOINT pre_migration_grant"))
         except Exception:
-            pass  # Table may not exist yet on first deploy — that's fine.
+            connection.execute(text("ROLLBACK TO SAVEPOINT pre_migration_grant"))
 
         context.configure(
             connection=connection, target_metadata=target_metadata
