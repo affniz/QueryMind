@@ -58,10 +58,10 @@ services:
   - type: redis
     name: data-insight-redis
     plan: free
+    ipAllowList: []
 
 databases:
   # PostgreSQL 16
   - name: data-insight-db
     plan: free
     databaseName: data_insight_db
-    user: postgres
