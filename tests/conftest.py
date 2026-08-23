@@ -10,14 +10,15 @@ from app.database import Base, get_db, get_readonly_db
 
 
 def skip_postgres(): pass
-#@pytest.fixture(scope="session")
-def skipped_postgres():
+
+
+@pytest.fixture(scope="session")
+def postgres():
     with PostgresContainer("postgres:16") as pg:
         yield pg
 
 
-def skip_postgres(): pass
-#@pytest.fixture(scope="session")
+@pytest.fixture(scope="session")
 def db_engine(postgres):
     url = postgres.get_connection_url().replace(
         "postgresql+psycopg2://",
@@ -46,8 +47,7 @@ def db_engine(postgres):
     engine.dispose()
 
 
-def skip_postgres(): pass
-#@pytest.fixture(scope="session")
+@pytest.fixture(scope="session")
 def readonly_engine(postgres):
     url = postgres.get_connection_url().replace(
         "postgresql+psycopg2://",
