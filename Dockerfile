@@ -6,4 +6,4 @@ COPY app app
 COPY alembic alembic
 COPY alembic.ini .
 EXPOSE 8000
-CMD alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000
+CMD alembic upgrade head && python -m app.setup_readonly && uvicorn app.main:app --host 0.0.0.0 --port 8000

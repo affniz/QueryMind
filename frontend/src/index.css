@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-background text-slate-100 font-sans min-h-screen antialiased;
+    background-image: theme('backgroundImage.main-gradient');
+    background-attachment: fixed;
+  }
+}
+
+@layer components {
+  .glass-panel {
+    @apply bg-panel-bg backdrop-blur-md border border-panel-border rounded-xl;
+  }
+  
+  .btn {
+    @apply px-4 py-2 rounded-lg font-medium cursor-pointer transition-all inline-flex items-center gap-2;
+  }
+
+  .btn-primary {
+    @apply bg-accent-gradient text-white hover:opacity-90 hover:-translate-y-px;
+  }
+
+  .btn-secondary {
+    @apply bg-white/5 border border-panel-border text-slate-100 hover:bg-white/10;
+  }
+
+  .input {
+    @apply bg-black/20 border border-panel-border rounded-lg px-3 py-2 text-slate-100 outline-none w-full focus:border-accent-primary;
+  }
+}
+
+@layer utilities {
+  .scrollbar-custom::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scrollbar-custom::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-custom::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+  }
+  .scrollbar-custom::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  /* ReactFlow Custom Edges */
+  .custom-edge .react-flow__edge-path {
+    stroke: #8b5cf6;
+    stroke-width: 2;
+    transition: stroke 0.2s ease, stroke-width 0.2s ease, filter 0.2s ease;
+  }
+  
+  .custom-edge:hover .react-flow__edge-path {
+    stroke: #c4b5fd;
+    stroke-width: 3;
+    filter: drop-shadow(0 0 5px rgba(139, 92, 246, 0.8));
+    cursor: pointer;
+  }
+
+  .custom-edge.selected .react-flow__edge-path {
+    stroke: #3b82f6;
+    stroke-width: 4;
+    filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.9));
+  }
+}

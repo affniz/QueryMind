@@ -9,6 +9,9 @@ from app.main import app
 from app.database import Base, get_db, get_readonly_db
 
 
+def skip_postgres(): pass
+
+
 @pytest.fixture(scope="session")
 def postgres():
     with PostgresContainer("postgres:16") as pg:

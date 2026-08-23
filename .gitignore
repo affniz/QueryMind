@@ -27,3 +27,8 @@ build/
 .mypy_cache/
 .pytest_cache/
 test.db
+
+# Frontend
+node_modules/
+frontend/dist/
+*.tsbuildinfo

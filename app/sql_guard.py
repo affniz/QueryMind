@@ -1,5 +1,5 @@
-import re
 import sqlparse
+import sqlparse.tokens as T
 from sqlparse.sql import Statement, Identifier, IdentifierList, Parenthesis
 from sqlparse.tokens import Keyword, Name
 
@@ -98,7 +98,27 @@ def validate_sql(sql: str, allowed_tables: set[str]) -> str:
             f"Only SELECT statements are allowed, got: {stmt_type}"
         )
 
-    cte_aliases = {m.group(1).lower() for m in re.finditer(r'(\w+)\s+AS\s*\(', sql, re.IGNORECASE)}
+    # Extract CTE aliases from the AST — immune to comment/whitespace bypass
+    cte_aliases: set[str] = set()
+    is_cte_clause = False
+    for token in stmt.tokens:
+        if token.ttype is T.Keyword.CTE:
+            is_cte_clause = True
+            continue
+        if is_cte_clause:
+            if token.is_whitespace:
+                continue
+            if isinstance(token, IdentifierList):
+                for ident in token.get_identifiers():
+                    if isinstance(ident, Identifier):
+                        name = ident.get_real_name()
+                        if name:
+                            cte_aliases.add(name.lower())
+            elif isinstance(token, Identifier):
+                name = token.get_real_name()
+                if name:
+                    cte_aliases.add(name.lower())
+            is_cte_clause = False
 
     referenced_tables, subquery_aliases = _extract_table_names(stmt)
     excluded = {t.lower() for t in allowed_tables} | cte_aliases | subquery_aliases
