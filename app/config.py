@@ -1,5 +1,5 @@
-from typing import List
-from pydantic import Field, field_validator
+from typing import List, Optional
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str
     GROQ_MODEL: str = "llama3-70b-8192"
     DATABASE_URL: str
-    READONLY_DATABASE_URL: str
+    READONLY_DATABASE_URL: Optional[str] = None
     REDIS_URL: str = "redis://redis:6379"
     SECRET_KEY: str
     ALGORITHM: str
@@ -23,6 +23,12 @@ class Settings(BaseSettings):
             "http://127.0.0.1:5174",
         ]
     )
+
+    @model_validator(mode="after")
+    def set_readonly_database_url(self) -> "Settings":
+        if not self.READONLY_DATABASE_URL:
+            self.READONLY_DATABASE_URL = self.DATABASE_URL
+        return self
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod

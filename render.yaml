@@ -23,7 +23,7 @@ services:
         sync: false
       - key: REDIS_URL
         fromService:
-          type: redis
+          type: keyvalue
           name: data-insight-redis
           property: connectionString
       - key: GROQ_API_KEY
