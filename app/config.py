@@ -24,6 +24,17 @@ class Settings(BaseSettings):
         ]
     )
 
+    @field_validator("DATABASE_URL", "READONLY_DATABASE_URL", mode="before")
+    @classmethod
+    def fix_db_url(cls, v: Optional[str]) -> Optional[str]:
+        """Render injects postgres:// or postgresql+psycopg2:// — rewrite to psycopg v3."""
+        if v is None:
+            return v
+        v = v.replace("postgres://", "postgresql+psycopg://", 1)
+        v = v.replace("postgresql://", "postgresql+psycopg://", 1)
+        v = v.replace("postgresql+psycopg2://", "postgresql+psycopg://", 1)
+        return v
+
     @model_validator(mode="after")
     def set_readonly_database_url(self) -> "Settings":
         if not self.READONLY_DATABASE_URL:
