@@ -64,20 +64,18 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
 
-    with connectable.connect() as connection:
-        # On Render, the app user may have lost UPDATE on alembic_version if a
-        # previous migration accidentally revoked its own access. Restore it here
-        # using a SAVEPOINT so that a failure (table doesn't exist yet on a
-        # completely fresh DB) never aborts the outer transaction.
-        connection.execute(text("SAVEPOINT pre_migration_grant"))
+    # Use a separate connection for the GRANT so it doesn't interfere with
+    # Alembic's transaction management on the migration connection below.
+    with connectable.connect() as grant_conn:
         try:
-            connection.execute(
+            grant_conn.execute(
                 text("GRANT ALL ON TABLE alembic_version TO CURRENT_USER")
             )
-            connection.execute(text("RELEASE SAVEPOINT pre_migration_grant"))
+            grant_conn.commit()
         except Exception:
-            connection.execute(text("ROLLBACK TO SAVEPOINT pre_migration_grant"))
+            grant_conn.rollback()  # Table doesn't exist yet on a fresh DB — fine.
 
+    with connectable.connect() as connection:
         context.configure(
             connection=connection, target_metadata=target_metadata
         )
