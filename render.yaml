@@ -53,8 +53,8 @@ services:
         source: /*
         destination: /index.html
 
-  # Redis
-  - type: redis
+  # Key Value (Redis)
+  - type: keyvalue
     name: data-insight-redis
     plan: free
     ipAllowList: []
