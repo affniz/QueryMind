@@ -54,13 +54,14 @@ services:
         source: /*
         destination: /index.html
 
+  # Redis
+  - type: redis
+    name: data-insight-redis
+    plan: free
+
 databases:
   # PostgreSQL 16
   - name: data-insight-db
     plan: free
     databaseName: data_insight_db
     user: postgres
-
-redis:
-  - name: data-insight-redis
-    plan: free
