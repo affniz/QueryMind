@@ -29,8 +29,13 @@ class RelationshipSuggestion(RelationshipCreate):
     target_dataset_name:str
     
 
+class HistoryEntry(BaseModel):
+    role: str   # "user" | "assistant"
+    content: str
+
 class AskRequest(BaseModel):
-    question:str
+    question: str
+    history: list[HistoryEntry] = []
 
 class AskResponse(BaseModel):
     question:str

@@ -18,7 +18,13 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    parsed = make_url(settings.READONLY_DATABASE_URL)
+    try:
+        parsed = make_url(settings.READONLY_DATABASE_URL)
+    except Exception:
+        # READONLY_DATABASE_URL not yet set (e.g. first deploy on Render).
+        # setup_readonly.py handles role creation at container startup instead.
+        return
+
     username = parsed.username
     password = parsed.password
 

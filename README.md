@@ -1,6 +1,6 @@
 # QueryMind
 
-A FastAPI backend that lets you upload CSVs and ask plain-English questions about your data. QueryMind uses a large language model to convert natural language into SQL, executes the query safely against your data, and returns a plain-English answer — no SQL knowledge required.
+QueryMind is a full-stack application that lets you upload CSVs and ask plain-English questions about your data through a React UI. It uses a large language model to convert natural language into SQL, executes the query safely against your data, and streams the answer back in real time — no SQL knowledge required.
 
 ## How it works
 
@@ -11,6 +11,7 @@ A FastAPI backend that lets you upload CSVs and ask plain-English questions abou
 
 ## Tech stack
 
+- **React + Vite + TypeScript** — frontend UI
 - **FastAPI** — API framework
 - **PostgreSQL** — data storage (with dynamic table creation per dataset)
 - **SQLAlchemy 2.0** — ORM and query execution
@@ -18,7 +19,7 @@ A FastAPI backend that lets you upload CSVs and ask plain-English questions abou
 - **Groq (LLaMA 3.3 70B)** — LLM for Text-to-SQL and answer generation
 - **sqlparse** — SQL safety validation (allowlist + statement-type enforcement)
 - **Redis** — response caching (24-hour TTL per user/dataset/question)
-- **Alembic** — database migrations (including automated role provisioning)
+- **Alembic** — database migrations
 - **Pandas** — CSV parsing
 - **Pydantic** — request/response validation
 - **python-jose** — JWT token creation and verification
@@ -88,7 +89,7 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-The `alembic upgrade head` step automatically provisions the `readonly_user` role in PostgreSQL.
+The `alembic upgrade head` step runs database migrations. The `readonly_user` PostgreSQL role is provisioned automatically at container startup via `app/setup_readonly.py`.
 
 Visit `http://127.0.0.1:8000/docs` for interactive API documentation.
 
@@ -138,6 +139,53 @@ docker-compose down
 ```bash
 docker-compose down -v
 ```
+
+## Deploying to Render
+
+The project ships with a [`render.yaml`](./render.yaml) Blueprint that provisions all four services — the FastAPI backend, the React frontend, a managed PostgreSQL database, and a managed Redis instance — in one click.
+
+### Steps
+
+#### 1. Push to GitHub
+
+Make sure your repository is on GitHub. The `.env` file is gitignored and should never be committed.
+
+#### 2. Create a new Blueprint on Render
+
+1. Go to [dashboard.render.com](https://dashboard.render.com) → **New** → **Blueprint**
+2. Connect your GitHub repository
+3. Render will detect `render.yaml` and show a preview of all services
+
+#### 3. Set required secrets before deploying
+
+Two env vars are marked `sync: false` and must be entered manually in the Render UI before clicking **Apply**:
+
+| Variable | Where to get it |
+|---|---|
+| `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) |
+| `CORS_ORIGINS` | Leave blank for now — set after the frontend URL is known |
+
+`READONLY_DATABASE_URL` and `READONLY_DB_PASSWORD` are configured after the first deploy (see below).
+
+#### 4. Deploy
+
+Click **Apply**. Render will:
+- Provision the PostgreSQL database and Redis instance
+- Build and deploy the Docker backend (runs `alembic upgrade head` + `setup_readonly.py` + uvicorn)
+- Build and deploy the React frontend as a static site
+
+#### 5. Post-deploy: set remaining env vars
+
+Once deployed, go to your **`data-insight-api`** service → **Environment** and add:
+
+| Variable | Value |
+|---|---|
+| `READONLY_DATABASE_URL` | `postgresql+psycopg://readonly_user:<READONLY_DB_PASSWORD>@<internal-host>:5432/data_insight_db` |
+| `CORS_ORIGINS` | Your frontend URL, e.g. `https://data-insight-frontend.onrender.com` |
+
+> **Tip:** Find the internal DB host in **`data-insight-db`** → **Info** → **Internal Database URL**. Find the generated `READONLY_DB_PASSWORD` in the backend service **Environment** tab.
+
+After saving, Render will automatically redeploy the backend.
 
 ## API endpoints
 
@@ -308,3 +356,5 @@ A GitHub Actions workflow runs the full test suite automatically on every push a
 - **v3.1** ✅ — Security hardening and performance. SQL injection protection via `sqlparse` (SELECT-only allowlist, table allowlist). Read-only PostgreSQL role provisioned automatically via Alembic migration. High-speed CSV ingestion using PostgreSQL `COPY` protocol (~30× faster than row-by-row INSERT). Specific exception handling with structured logging throughout.
 
 - **v4** ✅ — Developer experience and API completeness. All endpoints converted to `async def`; Groq API calls offloaded via `asyncio.to_thread` for non-blocking concurrency. `GET /datasets/{id}/preview` endpoint returns raw data rows via read-only connection. `GET /datasets/` is paginated (`skip`/`limit`). `/ask` responses now include the raw `results` rows alongside the plain-English answer. SQL guard extended to accept `WITH ... AS` CTEs. `User` model gains a `created_at` timestamp.
+
+- **v5** ✅ — Full-stack release. React + Vite + TypeScript frontend with a complete UI. One-click Render deployment via `render.yaml` Blueprint (FastAPI backend, React frontend, PostgreSQL, Redis). `GET /health` endpoint for Render health checks. `setup_readonly.py` for automated read-only user provisioning at container startup.

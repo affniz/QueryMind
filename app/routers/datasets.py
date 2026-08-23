@@ -21,15 +21,22 @@ router = APIRouter()
 async def upload_csv(file:UploadFile=File(...),current_user: User = Depends(get_current_user),db:Session=Depends(get_db)):
     if not file.filename.endswith(".csv"):# type: ignore[union-attr]
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Only CSV files are accepted.")
-    
-    contents = await file.read()
-    df = pd.read_csv(io.BytesIO(contents))
 
-    if df.empty:
+    contents = await file.read()
+    raw_buffer = io.BytesIO(contents)
+
+    # --- First pass: schema inference on the first 1000 rows ---
+    # Reading only a sample keeps memory usage low regardless of file size.
+    try:
+        df_sample = pd.read_csv(io.BytesIO(contents), nrows=1000)
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Could not parse CSV: {e}")
+
+    if df_sample.empty:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,detail="Uploaded CSV is empty.")
-    
-    df = df.where(pd.notnull(df),None)
-    empty_columns = [col for col in df.columns if df[col].isnull().all()]
+
+    df_sample = df_sample.where(pd.notnull(df_sample), None)
+    empty_columns = [col for col in df_sample.columns if df_sample[col].isnull().all()]
     if empty_columns:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -39,7 +46,7 @@ async def upload_csv(file:UploadFile=File(...),current_user: User = Depends(get_
     # Store sanitized column names to match the actual DB schema.
     # The LLM schema prompt uses these names, so they must match the table columns.
     column_types: dict[str, str] = {}
-    for col in df.columns:
+    for col in df_sample.columns:
         safe_name = sanitize_column_name(col)
         if safe_name in column_types:
             raise HTTPException(
@@ -47,12 +54,17 @@ async def upload_csv(file:UploadFile=File(...),current_user: User = Depends(get_
                 detail=f"Column name collision after sanitization: '{safe_name}' is produced by multiple columns. "
                        f"Please rename ambiguous columns before uploading."
             )
-        column_types[safe_name] = str(df[col].dtype)
+        column_types[safe_name] = str(df_sample[col].dtype)
+
+    # Count total rows without loading the whole file into RAM
+    raw_buffer.seek(0)
+    total_rows = sum(1 for _ in raw_buffer) - 1  # subtract header row
+    raw_buffer.seek(0)
 
     dataset = Dataset(
         name=file.filename,
         table_name="",
-        row_count=len(df),
+        row_count=total_rows,
         columns=column_types,
         user_id=current_user.id,
     )
@@ -62,8 +74,16 @@ async def upload_csv(file:UploadFile=File(...),current_user: User = Depends(get_
     table_name = generate_table_name(current_user.id, dataset.id, file.filename)  # type: ignore[arg-type]
     dataset.table_name = table_name
     try:
-        create_dynamic_table(engine, table_name, df)
-        insert_into_dynamic_table(engine, table_name, df)
+        create_dynamic_table(engine, table_name, df_sample)
+
+        # --- Second pass: chunked ingestion ---
+        # Stream the full file in 10k-row chunks so even gigabyte-scale CSVs
+        # never require loading more than one chunk into RAM at a time.
+        raw_buffer.seek(0)
+        chunk_iter = pd.read_csv(raw_buffer, chunksize=10_000)
+        for chunk in chunk_iter:
+            chunk = chunk.where(pd.notnull(chunk), None)
+            insert_into_dynamic_table(engine, table_name, chunk)
     except Exception as e:
         db.rollback()
         drop_dynamic_table(engine, table_name)

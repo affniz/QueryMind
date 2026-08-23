@@ -36,9 +36,9 @@ class Relationship(Base):
     __tablename__ = "relationships"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    source_dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id"), nullable=False)
+    source_dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False)
     source_column: Mapped[str] = mapped_column(nullable=False)
-    target_dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id"), nullable=False)
+    target_dataset_id: Mapped[int] = mapped_column(ForeignKey("datasets.id", ondelete="CASCADE"), nullable=False)
     target_column: Mapped[str] = mapped_column(nullable=False)
 
     source_dataset = relationship("Dataset", foreign_keys=[source_dataset_id])
