@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { X, Sparkles, GripHorizontal } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import api from '../utils/api';
@@ -16,6 +16,15 @@ const MAX_HISTORY_TURNS = 3;
 export default function Chat() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { datasets } = useOutletContext<{ activeFolder: string | null; datasets: Dataset[] }>();
+
+  // Compute the IDs of all datasets in the same folder as the current one.
+  // This is sent to the backend so the LLM only sees tables from this folder.
+  const datasetFolderMap: Record<string, string> = JSON.parse(localStorage.getItem('qm_ds_folders') || '{}');
+  const currentFolder = id ? (datasetFolderMap[id] ?? null) : null;
+  const folderDatasetIds = datasets
+    .filter(ds => (datasetFolderMap[ds.id] ?? null) === currentFolder)
+    .map(ds => Number(ds.id));
   const [messages, setMessages] = useState<Message[]>([]);
   const [isAsking, setIsAsking] = useState(false);
   // The SQL and results of the most recent response, displayed in the right panel.
@@ -138,7 +147,7 @@ export default function Chat() {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ question: input, history }),
+        body: JSON.stringify({ question: input, history, folder_dataset_ids: folderDatasetIds }),
       });
 
       if (!response.ok || !response.body) {

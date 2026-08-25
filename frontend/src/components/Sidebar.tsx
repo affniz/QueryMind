@@ -14,7 +14,7 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ activeFolder, setActiveFolder, datasets }: SidebarProps) {
-  const [folders, setFolders] = useState<string[]>(() => JSON.parse(localStorage.getItem('qm_folders') || '["Sales Data", "HR Data"]'));
+  const [folders, setFolders] = useState<string[]>(() => JSON.parse(localStorage.getItem('qm_folders') || '[]'));
   const [datasetFolderMap, setDatasetFolderMap] = useState<Record<string, string>>(() => JSON.parse(localStorage.getItem('qm_ds_folders') || '{}'));
   const [searchQuery, setSearchQuery] = useState('');
   

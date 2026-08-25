@@ -5,7 +5,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     GROQ_API_KEY: str
-    GROQ_MODEL: str = "llama3-70b-8192"
+    GROQ_MODEL: str
     DATABASE_URL: str
     READONLY_DATABASE_URL: Optional[str] = None
     REDIS_URL: str = "redis://redis:6379"

@@ -8,7 +8,7 @@ import { useDatasets } from '../hooks/useDatasets';
 export default function Dashboard() {
   const location = useLocation();
   const navigate = useNavigate();
-  const [activeFolder, setActiveFolder] = useState<string | null>('Sales Data');
+  const [activeFolder, setActiveFolder] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState('User');
 
   const { data: fetchedDatasets } = useDatasets();
