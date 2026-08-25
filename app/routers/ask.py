@@ -214,6 +214,15 @@ async def ask_question(
     all_datasets = db.execute(
         select(Dataset).where(Dataset.user_id == current_user.id)
     ).scalars().all()
+
+    # Scope the LLM context to only the datasets in the same folder.
+    # If the frontend sends folder_dataset_ids, restrict to those IDs only
+    # (always keeping the target dataset itself). This prevents the AI from
+    # seeing or querying tables that belong to a different folder.
+    if request.folder_dataset_ids is not None:
+        allowed_folder_ids = set(request.folder_dataset_ids) | {dataset_id}
+        all_datasets = [ds for ds in all_datasets if ds.id in allowed_folder_ids]
+
     owned_ids = [ds.id for ds in all_datasets]
     relationships = db.execute(
         select(Relationship)

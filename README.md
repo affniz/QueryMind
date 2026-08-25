@@ -5,9 +5,9 @@ QueryMind is a full-stack application that lets you upload CSVs and ask plain-En
 ## How it works
 
 1. Register and log in to get a JWT token
-2. Upload one or more CSV files via the API
-3. Optionally define (or auto-detect) relationships between datasets
-4. Ask a question in plain English — QueryMind generates SQL, validates it for safety, executes it against your data using a read-only connection, and returns a plain-English answer alongside the generated SQL
+2. Upload one or more CSV files — each file becomes a queryable table
+3. Optionally organise datasets into folders and define relationships between them
+4. Ask a question in plain English — QueryMind generates SQL, validates it for safety, executes it against your data using a read-only connection, and streams a plain-English answer back in real time alongside the generated SQL
 
 ## Tech stack
 
@@ -16,7 +16,7 @@ QueryMind is a full-stack application that lets you upload CSVs and ask plain-En
 - **PostgreSQL** — data storage (with dynamic table creation per dataset)
 - **SQLAlchemy 2.0** — ORM and query execution
 - **psycopg** — PostgreSQL driver (used for high-speed bulk COPY ingestion)
-- **Groq (LLaMA 3.3 70B)** — LLM for Text-to-SQL and answer generation
+- **Groq** — LLM provider for Text-to-SQL and answer generation (model configurable via `GROQ_MODEL`)
 - **sqlparse** — SQL safety validation (allowlist + statement-type enforcement)
 - **Redis** — response caching (24-hour TTL per user/dataset/question)
 - **Alembic** — database migrations
@@ -45,7 +45,8 @@ QueryMind applies two independent layers of protection against SQL injection att
 
 - Python 3.10+
 - PostgreSQL running locally
-- Groq API key (free at console.groq.com)
+- Redis running locally
+- Groq API key (free at [console.groq.com](https://console.groq.com))
 
 ### Setup
 
@@ -74,13 +75,16 @@ DB_USER=your_username
 DB_PASSWORD=your_password
 DB_NAME=your_db_name
 GROQ_API_KEY=your_groq_api_key_here
-REDIS_URL=redis://redis:6379
+GROQ_MODEL=openai/gpt-oss-120b
+REDIS_URL=redis://localhost:6379
 SECRET_KEY=your_secret_key_here
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+ACCESS_TOKEN_EXPIRE_MINUTES=60
 ```
 
 > **Note:** `DATABASE_URL` uses `localhost` for local development. When running via Docker, both URLs are built automatically by `docker-compose.yml` — you do not need to change them.
+
+> **`GROQ_MODEL`** — any model available on your Groq account can be used here (e.g. `openai/gpt-oss-120b`, `llama-3.3-70b-versatile`, `mixtral-8x7b-32768`). There is no hardcoded fallback; this field is required.
 
 ### Run
 
@@ -89,25 +93,27 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-The `alembic upgrade head` step runs database migrations. The `readonly_user` PostgreSQL role is provisioned automatically at container startup via `app/setup_readonly.py`.
+The `alembic upgrade head` step runs database migrations and provisions the `readonly_user` PostgreSQL role automatically.
 
 Visit `http://127.0.0.1:8000/docs` for interactive API documentation.
 
-## Docker Setup
+## Docker setup
 
 ### Prerequisites
+
 - Docker
 - Docker Compose
 
 ### Steps
 
-### 1. Clone the repository
+#### 1. Clone the repository
+
 ```bash
 git clone https://github.com/affniz/QueryMind.git
 cd QueryMind
 ```
 
-### 2. Create a `.env` file in the project root
+#### 2. Create a `.env` file in the project root
 
 ```
 DB_USER=your_username
@@ -116,26 +122,31 @@ DB_NAME=your_db_name
 READONLY_DB_USER=readonly_user
 READONLY_DB_PASSWORD=readonly_password
 GROQ_API_KEY=your_groq_api_key_here
+GROQ_MODEL=openai/gpt-oss-120b
 SECRET_KEY=your_secret_key_here
 ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
+ACCESS_TOKEN_EXPIRE_MINUTES=60
 ```
 
 > **Note:** No `DATABASE_URL` needed here — Docker Compose builds both the main and read-only URLs automatically from the variables above.
 
-### 3. Build & start the containers
+#### 3. Build & start the containers
+
 ```bash
 docker-compose up --build
 ```
-The API will be available at http://localhost:8000
-Swagger UI: http://localhost:8000/docs
 
-### 4. Stop the app
+The API will be available at `http://localhost:8000`
+Swagger UI: `http://localhost:8000/docs`
+
+#### 4. Stop the app
+
 ```bash
 docker-compose down
 ```
 
-### 5. Reset the database (optional)
+#### 5. Reset the database (optional)
+
 ```bash
 docker-compose down -v
 ```
@@ -143,6 +154,8 @@ docker-compose down -v
 ## Deploying to Render
 
 The project ships with a [`render.yaml`](./render.yaml) Blueprint that provisions all four services — the FastAPI backend, the React frontend, a managed PostgreSQL database, and a managed Redis instance — in one click.
+
+Once connected to GitHub, Render **auto-deploys on every push to `main`** — no manual steps needed after the initial setup.
 
 ### Steps
 
@@ -158,14 +171,15 @@ Make sure your repository is on GitHub. The `.env` file is gitignored and should
 
 #### 3. Set required secrets before deploying
 
-Two env vars are marked `sync: false` and must be entered manually in the Render UI before clicking **Apply**:
+These env vars are marked `sync: false` and must be entered manually in the Render UI before clicking **Apply**:
 
 | Variable | Where to get it |
 |---|---|
 | `GROQ_API_KEY` | [console.groq.com](https://console.groq.com) |
+| `GROQ_MODEL` | Any Groq-supported model ID, e.g. `openai/gpt-oss-120b` |
 | `CORS_ORIGINS` | Leave blank for now — set after the frontend URL is known |
 
-`READONLY_DATABASE_URL` and `READONLY_DB_PASSWORD` are configured after the first deploy (see below).
+`READONLY_DATABASE_URL` is configured after the first deploy (see below).
 
 #### 4. Deploy
 
@@ -191,20 +205,21 @@ After saving, Render will automatically redeploy the backend.
 
 All `/datasets/` endpoints require an `Authorization: Bearer <token>` header.
 
-| Method | Endpoint | Auth required | Description |
-|--------|----------|:---:|-------------|
-| `POST` | `/auth/register` | ❌ | Register a new user |
-| `POST` | `/auth/login` | ❌ | Log in and receive a JWT token |
-| `POST` | `/datasets/upload` | ✅ | Upload a CSV file |
-| `GET` | `/datasets` | ✅ | List your uploaded datasets (paginated: `?skip=0&limit=20`) |
-| `GET` | `/datasets/{id}` | ✅ | Get dataset metadata |
-| `GET` | `/datasets/{id}/preview` | ✅ | Preview up to 100 raw data rows (`?limit=10`) |
-| `DELETE` | `/datasets/{id}` | ✅ | Delete a dataset and its records |
-| `POST` | `/datasets/relationships/` | ✅ | Define a relationship between two datasets |
-| `GET` | `/datasets/relationships/` | ✅ | List all defined relationships |
-| `POST` | `/datasets/relationships/auto-detect` | ✅ | Auto-detect relationships between uploaded datasets |
-| `DELETE`| `/datasets/relationships/{id}` | ✅ | Delete a defined relationship |
-| `POST` | `/datasets/{id}/ask` | ✅ | Ask a plain-English question (supports cross-table JOIN queries) |
+| Method | Endpoint | Auth | Description |
+|--------|----------|:----:|-------------|
+| `POST` | `/auth/register` | No | Register a new user |
+| `POST` | `/auth/login` | No | Log in and receive a JWT token |
+| `GET` | `/health` | No | Health check |
+| `POST` | `/datasets/upload` | Yes | Upload a CSV file |
+| `GET` | `/datasets` | Yes | List your datasets (paginated: `?skip=0&limit=20`) |
+| `GET` | `/datasets/{id}` | Yes | Get dataset metadata |
+| `GET` | `/datasets/{id}/preview` | Yes | Preview up to 100 raw rows (`?limit=10`) |
+| `DELETE` | `/datasets/{id}` | Yes | Delete a dataset and its records |
+| `POST` | `/datasets/relationships/` | Yes | Define a relationship between two datasets |
+| `GET` | `/datasets/relationships/` | Yes | List all defined relationships |
+| `POST` | `/datasets/relationships/auto-detect` | Yes | Auto-detect relationships by matching column names |
+| `DELETE` | `/datasets/relationships/{id}` | Yes | Delete a defined relationship |
+| `POST` | `/datasets/{id}/ask` | Yes | Ask a plain-English question (streaming SSE response) |
 
 ## Example
 
@@ -237,13 +252,13 @@ Response:
 curl -X POST "http://localhost:8000/datasets/upload" \
   -H "Authorization: Bearer <your_token>" \
   -F "file=@employees.csv"
-# → dataset id=1, table=u1_ds1_employees
+# -> dataset id=1, table=u1_ds1_employees
 
 # Upload departments
 curl -X POST "http://localhost:8000/datasets/upload" \
   -H "Authorization: Bearer <your_token>" \
   -F "file=@departments.csv"
-# → dataset id=2, table=u1_ds2_departments
+# -> dataset id=2, table=u1_ds2_departments
 
 # Define the relationship
 curl -X POST "http://localhost:8000/datasets/relationships/" \
@@ -322,6 +337,7 @@ pytest -v
 ```
 
 The test suite covers:
+
 - Root endpoint
 - User registration and login
 - JWT-protected route enforcement
@@ -345,16 +361,20 @@ A GitHub Actions workflow runs the full test suite automatically on every push a
 2. Installs all dependencies
 3. Runs `pytest` against a testcontainers-managed PostgreSQL instance
 
+Render auto-deploys the backend and frontend on every push to `main` after the initial setup — no manual intervention required.
+
 ## Version history
 
-- **v1** — Initial prototype. Single-user, single-table CSV upload with plain-English question answering via Groq LLaMA 3.3. No authentication, no persistence layer.
+- **v1** — Initial prototype. Single-user, single-table CSV upload with plain-English question answering via Groq. No authentication, no persistence layer.
 
 - **v2** ✅ — JWT authentication and per-user dataset isolation. Each user's data is stored in namespaced PostgreSQL tables and inaccessible to other accounts.
 
 - **v3** ✅ — Multi-table support. Users can upload multiple CSVs, define foreign-key relationships between them, and ask questions that require cross-table JOINs. Relationships can also be auto-detected by matching column names.
 
-- **v3.1** ✅ — Security hardening and performance. SQL injection protection via `sqlparse` (SELECT-only allowlist, table allowlist). Read-only PostgreSQL role provisioned automatically via Alembic migration. High-speed CSV ingestion using PostgreSQL `COPY` protocol (~30× faster than row-by-row INSERT). Specific exception handling with structured logging throughout.
+- **v3.1** ✅ — Security hardening and performance. SQL injection protection via `sqlparse` (SELECT-only allowlist, table allowlist). Read-only PostgreSQL role provisioned automatically via Alembic migration. High-speed CSV ingestion using PostgreSQL `COPY` protocol (~30x faster than row-by-row INSERT). Specific exception handling with structured logging throughout.
 
 - **v4** ✅ — Developer experience and API completeness. All endpoints converted to `async def`; Groq API calls offloaded via `asyncio.to_thread` for non-blocking concurrency. `GET /datasets/{id}/preview` endpoint returns raw data rows via read-only connection. `GET /datasets/` is paginated (`skip`/`limit`). `/ask` responses now include the raw `results` rows alongside the plain-English answer. SQL guard extended to accept `WITH ... AS` CTEs. `User` model gains a `created_at` timestamp.
 
 - **v5** ✅ — Full-stack release. React + Vite + TypeScript frontend with a complete UI. One-click Render deployment via `render.yaml` Blueprint (FastAPI backend, React frontend, PostgreSQL, Redis). `GET /health` endpoint for Render health checks. `setup_readonly.py` for automated read-only user provisioning at container startup.
+
+- **v5.1** ✅ — Folder isolation and config cleanup. Datasets can be organised into folders in the UI; the LLM context is now scoped to only the datasets within the active folder, preventing cross-folder data leakage. `GROQ_MODEL` is fully env-driven with no hardcoded fallback.

@@ -36,6 +36,10 @@ class HistoryEntry(BaseModel):
 class AskRequest(BaseModel):
     question: str
     history: list[HistoryEntry] = []
+    # IDs of all datasets in the same folder as the queried dataset.
+    # When provided, the LLM context is scoped to only these datasets,
+    # preventing cross-folder data leakage.
+    folder_dataset_ids: list[int] | None = None
 
 class AskResponse(BaseModel):
     question:str
