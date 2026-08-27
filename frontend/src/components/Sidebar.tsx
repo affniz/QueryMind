@@ -20,7 +20,7 @@ export default function Sidebar({ activeFolder, setActiveFolder, datasets }: Sid
   
   const location = useLocation();
   const navigate = useNavigate();
-  const { showConfirm, showPrompt } = useDialog();
+  const { showConfirm, showPrompt, showChoice } = useDialog();
   const queryClient = useQueryClient();
 
   const deleteMutation = useMutation({
@@ -85,6 +85,47 @@ export default function Sidebar({ activeFolder, setActiveFolder, datasets }: Sid
       localStorage.setItem('qm_folders', JSON.stringify(newFolders));
       setActiveFolder(name);
     }
+  };
+
+  const deleteFolder = async (e: React.MouseEvent, folderName: string) => {
+    e.stopPropagation();
+
+    const choice = await showChoice(
+      `What would you like to do with the datasets inside "${folderName}"?`,
+      [
+        { label: '🗑 Delete folder and all its datasets', value: 'delete', danger: true },
+        { label: '📂 Delete folder only — move datasets to Uncategorized', value: 'move' },
+      ]
+    );
+    if (!choice) return; // cancelled
+
+    // Remove folder from list
+    const newFolders = folders.filter(f => f !== folderName);
+    setFolders(newFolders);
+    localStorage.setItem('qm_folders', JSON.stringify(newFolders));
+
+    if (choice === 'delete') {
+      // Delete every dataset in the folder via the API
+      const datasetsInFolder = groupedDatasets[folderName] ?? [];
+      datasetsInFolder.forEach(ds => deleteMutation.mutate(ds.id));
+
+      // Remove their folder mappings too
+      const newMap = { ...datasetFolderMap };
+      datasetsInFolder.forEach(ds => delete newMap[ds.id]);
+      setDatasetFolderMap(newMap);
+      localStorage.setItem('qm_ds_folders', JSON.stringify(newMap));
+    } else {
+      // Move datasets to Uncategorized
+      const newMap = { ...datasetFolderMap };
+      Object.keys(newMap).forEach(dsId => {
+        if (newMap[dsId] === folderName) delete newMap[dsId];
+      });
+      setDatasetFolderMap(newMap);
+      localStorage.setItem('qm_ds_folders', JSON.stringify(newMap));
+    }
+
+    if (activeFolder === folderName) setActiveFolder(null);
+    toast.success(`Folder "${folderName}" deleted.`);
   };
 
   const toggleFolder = (folderName: string) => {
@@ -168,13 +209,20 @@ export default function Sidebar({ activeFolder, setActiveFolder, datasets }: Sid
           if (searchQuery && !displayGroups[folder]) return null;
           
           return (
-          <div key={folder} className="mb-2">
+          <div key={folder} className="mb-2 group/folder">
             <div className="flex items-center justify-between text-white text-[15px] font-medium py-2 cursor-pointer" onClick={() => toggleFolder(folder)}>
               <div className="flex items-center gap-2">
                 {activeFolder === folder ? <FolderOpen size={16} className="text-accent-primary" /> : <Folder size={16} className="text-accent-primary" />}
                 <span>{folder}</span>
               </div>
               <div className="flex items-center gap-2">
+                <div
+                  className="text-slate-400 p-1 rounded-md transition-all cursor-pointer flex items-center justify-center opacity-0 group-hover/folder:opacity-100 hover:text-red-500 hover:bg-red-500/10 hover:shadow-[0_2px_10px_rgba(239,68,68,0.15)]"
+                  onClick={(e) => deleteFolder(e, folder)}
+                  title={`Delete folder "${folder}"`}
+                >
+                  <Trash2 size={14} />
+                </div>
                 {activeFolder === folder && (
                   <label 
                     onClick={e => e.stopPropagation()} 

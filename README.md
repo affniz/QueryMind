@@ -130,7 +130,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES=60
 
 > **Note:** No `DATABASE_URL` needed here — Docker Compose builds both the main and read-only URLs automatically from the variables above.
 
-#### 3. Build & start the containers
+#### 3. Build & start the backend containers
 
 ```bash
 docker-compose up --build
@@ -139,13 +139,25 @@ docker-compose up --build
 The API will be available at `http://localhost:8000`
 Swagger UI: `http://localhost:8000/docs`
 
-#### 4. Stop the app
+#### 4. Start the frontend
+
+The frontend is a Vite dev server run separately. In a new terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The UI will be available at `http://localhost:5173`
+
+#### 5. Stop the app
 
 ```bash
 docker-compose down
 ```
 
-#### 5. Reset the database (optional)
+#### 6. Reset the database (optional)
 
 ```bash
 docker-compose down -v
