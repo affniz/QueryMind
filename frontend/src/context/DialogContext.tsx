@@ -1,12 +1,19 @@
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 
-type DialogType = 'alert' | 'confirm' | 'prompt';
+type DialogType = 'alert' | 'confirm' | 'prompt' | 'choice';
+
+interface ChoiceOption {
+  label: string;
+  value: string;
+  danger?: boolean;
+}
 
 interface DialogState {
   isOpen: boolean;
   type: DialogType;
   message: string;
   defaultValue: string;
+  choices: ChoiceOption[];
   resolve: ((value?: any) => void) | null;
 }
 
@@ -14,6 +21,7 @@ interface DialogContextType {
   showAlert: (message: string) => Promise<void>;
   showConfirm: (message: string) => Promise<boolean>;
   showPrompt: (message: string, defaultValue?: string) => Promise<string | null>;
+  showChoice: (message: string, choices: ChoiceOption[]) => Promise<string | null>;
 }
 
 const DialogContext = createContext<DialogContextType | undefined>(undefined);
@@ -30,6 +38,7 @@ export const DialogProvider = ({ children }: { children: ReactNode }) => {
     type: 'alert',
     message: '',
     defaultValue: '',
+    choices: [],
     resolve: null
   });
 
@@ -46,6 +55,7 @@ export const DialogProvider = ({ children }: { children: ReactNode }) => {
         type: 'alert',
         message,
         defaultValue: '',
+        choices: [],
         resolve: () => {
           closeDialog();
           resolve();
@@ -61,6 +71,7 @@ export const DialogProvider = ({ children }: { children: ReactNode }) => {
         type: 'confirm',
         message,
         defaultValue: '',
+        choices: [],
         resolve: (result: boolean) => {
           closeDialog();
           resolve(result);
@@ -77,6 +88,23 @@ export const DialogProvider = ({ children }: { children: ReactNode }) => {
         type: 'prompt',
         message,
         defaultValue,
+        choices: [],
+        resolve: (result: string | null) => {
+          closeDialog();
+          resolve(result);
+        }
+      });
+    });
+  }, []);
+
+  const showChoice = useCallback((message: string, choices: ChoiceOption[]): Promise<string | null> => {
+    return new Promise((resolve) => {
+      setDialogState({
+        isOpen: true,
+        type: 'choice',
+        message,
+        defaultValue: '',
+        choices,
         resolve: (result: string | null) => {
           closeDialog();
           resolve(result);
@@ -100,13 +128,15 @@ export const DialogProvider = ({ children }: { children: ReactNode }) => {
       dialogState.resolve?.(null);
     } else if (dialogState.type === 'confirm') {
       dialogState.resolve?.(false);
+    } else if (dialogState.type === 'choice') {
+      dialogState.resolve?.(null);
     } else {
       dialogState.resolve?.();
     }
   };
 
   return (
-    <DialogContext.Provider value={{ showAlert, showConfirm, showPrompt }}>
+    <DialogContext.Provider value={{ showAlert, showConfirm, showPrompt, showChoice }}>
       {children}
       {dialogState.isOpen && (
         <div style={{
@@ -158,19 +188,45 @@ export const DialogProvider = ({ children }: { children: ReactNode }) => {
                 }}
               />
             )}
-            
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
-              {dialogState.type !== 'alert' && (
-                <button 
+
+            {dialogState.type === 'choice' ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {dialogState.choices.map(choice => (
+                  <button
+                    key={choice.value}
+                    onClick={() => dialogState.resolve?.(choice.value)}
+                    style={{
+                      background: choice.danger ? 'rgba(239,68,68,0.15)' : 'rgba(139,92,246,0.15)',
+                      border: `1px solid ${choice.danger ? 'rgba(239,68,68,0.3)' : 'rgba(139,92,246,0.3)'}`,
+                      color: choice.danger ? '#f87171' : '#a78bfa',
+                      padding: '0.6rem 1rem',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                      textAlign: 'left',
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = choice.danger ? 'rgba(239,68,68,0.25)' : 'rgba(139,92,246,0.25)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = choice.danger ? 'rgba(239,68,68,0.15)' : 'rgba(139,92,246,0.15)';
+                    }}
+                  >
+                    {choice.label}
+                  </button>
+                ))}
+                <button
                   onClick={handleCancel}
                   style={{
                     background: 'transparent',
                     border: '1px solid rgba(255,255,255,0.1)',
                     color: '#9ca3af',
-                    padding: '0.5rem 1rem',
+                    padding: '0.6rem 1rem',
                     borderRadius: '8px',
                     cursor: 'pointer',
                     fontWeight: 500,
+                    marginTop: '0.25rem',
                     transition: 'all 0.2s'
                   }}
                   onMouseEnter={(e) => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }}
@@ -178,27 +234,49 @@ export const DialogProvider = ({ children }: { children: ReactNode }) => {
                 >
                   Cancel
                 </button>
-              )}
-              
-              <button 
-                onClick={handleConfirm}
-                style={{
-                  background: 'var(--accent-primary, #8b5cf6)',
-                  border: 'none',
-                  color: 'white',
-                  padding: '0.5rem 1.5rem',
-                  borderRadius: '8px',
-                  cursor: 'pointer',
-                  fontWeight: 500,
-                  boxShadow: '0 4px 15px rgba(139, 92, 246, 0.4)',
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(139, 92, 246, 0.6)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 15px rgba(139, 92, 246, 0.4)'; }}
-              >
-                {dialogState.type === 'confirm' ? 'Confirm' : 'OK'}
-              </button>
-            </div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.75rem' }}>
+                {dialogState.type !== 'alert' && (
+                  <button 
+                    onClick={handleCancel}
+                    style={{
+                      background: 'transparent',
+                      border: '1px solid rgba(255,255,255,0.1)',
+                      color: '#9ca3af',
+                      padding: '0.5rem 1rem',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      fontWeight: 500,
+                      transition: 'all 0.2s'
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#9ca3af'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'; }}
+                  >
+                    Cancel
+                  </button>
+                )}
+                
+                <button 
+                  onClick={handleConfirm}
+                  style={{
+                    background: 'var(--accent-primary, #8b5cf6)',
+                    border: 'none',
+                    color: 'white',
+                    padding: '0.5rem 1.5rem',
+                    borderRadius: '8px',
+                    cursor: 'pointer',
+                    fontWeight: 500,
+                    boxShadow: '0 4px 15px rgba(139, 92, 246, 0.4)',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(139, 92, 246, 0.6)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = '0 4px 15px rgba(139, 92, 246, 0.4)'; }}
+                >
+                  {dialogState.type === 'confirm' ? 'Confirm' : 'OK'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
