@@ -19,6 +19,7 @@ import api from '../utils/api';
 import { Dataset } from '../types';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { useFolders } from '../hooks/useFolders';
 
 interface TableNodeData {
   label: string;
@@ -67,6 +68,7 @@ const TableNode = ({ data }: { data: TableNodeData }) => {
 export default function RelationshipMapper() {
   const { activeFolder, datasets: allDatasets } = useOutletContext<{ activeFolder: string | null, datasets: Dataset[] }>();
   const queryClient = useQueryClient();
+  const { data: folders = [] } = useFolders();
   
   const [nodes, setNodes, onNodesChange] = useNodesState<any>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<any>([]);
@@ -74,6 +76,7 @@ export default function RelationshipMapper() {
   const [showModal, setShowModal] = useState(false);
 
   const nodeTypes = useMemo(() => ({ table: TableNode }), []);
+
 
   const { data: allRelationships } = useQuery<Relationship[]>({
     queryKey: ['relationships'],
@@ -84,10 +87,13 @@ export default function RelationshipMapper() {
   });
 
   useEffect(() => {
-    const datasetFolderMap = JSON.parse(localStorage.getItem('qm_ds_folders') || '{}');
+    // Resolve activeFolder name to a folder_id (null = Uncategorized)
+    const activeFolderObj = folders.find(f => f.name === activeFolder) ?? null;
+    const activeFolderId = activeFolderObj ? activeFolderObj.id : null;
+
     const visibleDatasets = allDatasets.filter(ds => {
-      const folder = datasetFolderMap[ds.id] || "Uncategorized";
-      return folder === activeFolder;
+      const dsFolderId = ds.folder_id ?? null;
+      return dsFolderId === activeFolderId;
     });
 
     const visibleIds = new Set(visibleDatasets.map(ds => parseInt(ds.id)));
@@ -120,7 +126,7 @@ export default function RelationshipMapper() {
 
     setNodes(initialNodes);
     setEdges(initialEdges);
-  }, [allDatasets, allRelationships, activeFolder, setNodes, setEdges]);
+  }, [allDatasets, allRelationships, activeFolder, folders, setNodes, setEdges]);
 
   const addRelMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -194,30 +200,36 @@ export default function RelationshipMapper() {
       const res = await api.post('/datasets/relationships/auto-detect');
       return res.data;
     },
-    onSuccess: (data) => {
-      const datasetFolderMap = JSON.parse(localStorage.getItem('qm_ds_folders') || '{}');
-      const sugs = data.filter((sug: any) => {
-        const sourceFolder = datasetFolderMap[sug.source_dataset_id] || "Uncategorized";
-        const targetFolder = datasetFolderMap[sug.target_dataset_id] || "Uncategorized";
-        return sourceFolder === activeFolder && targetFolder === activeFolder;
-      });
-
-      if (sugs.length === 0) {
-        toast.info(`No relationships could be auto-detected in the "${activeFolder}" folder.`);
-      } else {
-        setSuggestions(sugs);
-        setShowModal(true);
-      }
-    },
     onError: () => toast.error("Failed to auto-detect relationships")
   });
 
   const handleAutoDetect = async () => {
-    if (!activeFolder) {
-      toast.info("Please select a folder from the sidebar first to auto-detect relationships.");
-      return;
+    try {
+      const data = await autoDetectMutation.mutateAsync();
+
+      // Resolve active folder → folder_id at call time (fresh, not stale closure)
+      const activeFolderObj = folders.find(f => f.name === activeFolder) ?? null;
+      const activeFolderId = activeFolderObj ? activeFolderObj.id : null;
+
+      // Filter suggestions to only those whose datasets are in the current folder.
+      // We compare numerically to avoid string/number type mismatches.
+      const sugs = data.filter((sug: any) => {
+        const sourceDs = allDatasets.find(ds => Number(ds.id) === Number(sug.source_dataset_id));
+        const targetDs = allDatasets.find(ds => Number(ds.id) === Number(sug.target_dataset_id));
+        const sourceFolderId = sourceDs?.folder_id ?? null;
+        const targetFolderId = targetDs?.folder_id ?? null;
+        return sourceFolderId === activeFolderId && targetFolderId === activeFolderId;
+      });
+
+      if (sugs.length === 0) {
+        toast.info(`No relationships could be auto-detected in the "${activeFolder ?? 'Uncategorized'}" folder.`);
+      } else {
+        setSuggestions(sugs);
+        setShowModal(true);
+      }
+    } catch {
+      // error is already handled by onError
     }
-    autoDetectMutation.mutate();
   };
 
   const approveSuggestions = async () => {

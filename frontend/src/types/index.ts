@@ -3,13 +3,19 @@ export interface User {
   sub: string;
 }
 
+export interface Folder {
+  id: number;
+  name: string;
+  created_at: string;
+}
+
 export interface Dataset {
   id: string;
   name: string;
   description: string;
   created_at: string;
   updated_at?: string;
-  folder?: string;
+  folder_id?: number | null;
 }
 
 export interface HistoryEntry {
