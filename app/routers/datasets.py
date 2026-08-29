@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File,
 from sqlalchemy import select, or_, text
 from sqlalchemy.orm import Session
 from app.database import get_db, engine, readonly_engine
-from app.models import Dataset, Folder, Relationship, User
-from app.schemas import DatasetResponse, DatasetMoveFolder
+from app.models import Dataset, Relationship, User
+from app.schemas import DatasetResponse
 from app.auth import get_current_user
 from app.table_manager import (
     generate_table_name,
@@ -127,9 +127,7 @@ async def preview_dataset(
             {"limit": limit},
         ).mappings().all()
 
-    return {"dataset_id": dataset_id, "table_name": dataset.table_name, "rows": [
-        {k: v for k, v in dict(r).items() if k != "_record_id"} for r in rows
-    ]}
+    return {"dataset_id": dataset_id, "table_name": dataset.table_name, "rows": [dict(r) for r in rows]}
 
 
 @router.delete("/{dataset_id}")
@@ -147,29 +145,3 @@ async def delete_dataset(dataset_id:int,current_user: User = Depends(get_current
     db.delete(dataset)
     db.commit()
     return {"message":f"Dataset {dataset_id} deleted successfully."}
-
-
-@router.patch("/{dataset_id}/folder", response_model=DatasetResponse)
-async def move_dataset_to_folder(
-    dataset_id: int,
-    body: DatasetMoveFolder,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    dataset = db.execute(
-        select(Dataset).where(Dataset.id == dataset_id, Dataset.user_id == current_user.id)
-    ).scalar_one_or_none()
-    if not dataset:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Dataset {dataset_id} not found.")
-
-    if body.folder_id is not None:
-        folder = db.execute(
-            select(Folder).where(Folder.id == body.folder_id, Folder.user_id == current_user.id)
-        ).scalar_one_or_none()
-        if not folder:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Folder {body.folder_id} not found.")
-
-    dataset.folder_id = body.folder_id
-    db.commit()
-    db.refresh(dataset)
-    return dataset
