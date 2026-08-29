@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import datasets, ask, auth, relationships
+from app.routers import datasets, ask, auth, relationships, folders
 from app.config import settings
 
 app = FastAPI(
@@ -21,6 +21,7 @@ app.include_router(datasets.router, prefix="/datasets", tags=["datasets"])
 app.include_router(ask.router, prefix="/datasets", tags=["ask"])
 app.include_router(auth.router)
 app.include_router(relationships.router, prefix="/datasets/relationships", tags=["relationships"])
+app.include_router(folders.router, prefix="/folders", tags=["folders"])
 
 
 @app.get("/")

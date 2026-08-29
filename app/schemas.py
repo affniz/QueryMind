@@ -1,6 +1,15 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional
+
+class FolderCreate(BaseModel):
+    name: str
+
+class FolderResponse(BaseModel):
+    id: int
+    name: str
+    created_at: datetime
+    model_config = {"from_attributes": True}
 
 class DatasetBase(BaseModel):
     name:str
@@ -11,7 +20,11 @@ class DatasetResponse(DatasetBase):
     id:int
     uploaded_at:datetime
     table_name:str
+    folder_id: Optional[int] = None
     model_config={"from_attributes":True}
+
+class DatasetMoveFolder(BaseModel):
+    folder_id: Optional[int] = None
 
 class RelationshipCreate(BaseModel):
     source_dataset_id:int
