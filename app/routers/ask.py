@@ -192,7 +192,10 @@ async def ask_question(
                     await asyncio.sleep(0)
                 done_payload = {
                     "row_count": cached_data["row_count"],
-                    "results": cached_data["results"],
+                    "results": [
+                        {k: v for k, v in row.items() if k != "_record_id"}
+                        for row in cached_data["results"]
+                    ],
                     "cached": True,
                 }
                 yield f"event: done\ndata: {json.dumps(done_payload)}\n\n"
@@ -247,6 +250,8 @@ async def ask_question(
     allowed_tables = {ds.table_name.lower() for ds in all_datasets}
 
     # --- SQL generation with retry loop ---
+    print(f"DEBUG: allowed_tables={allowed_tables}")
+    print(f"DEBUG: schema_prompt={schema_prompt}")
     sql_query: str | None = None
     results: list[dict[str, Any]] | None = None
     last_error: str | None = None
@@ -285,7 +290,10 @@ async def ask_question(
             # Wrap in a hard LIMIT to guard against unbounded LLM-generated queries
             safe_query = f"SELECT * FROM ({candidate_sql}) AS _safe_query LIMIT 100"
             raw_results = readonly_db.execute(text(safe_query)).mappings().all()
-            results = jsonable_encoder([dict(row) for row in raw_results])
+            results = jsonable_encoder([
+                {k: v for k, v in dict(row).items() if k != "_record_id"}
+                for row in raw_results
+            ])
             sql_query = candidate_sql
             break  # success
 
