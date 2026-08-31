@@ -36,14 +36,14 @@ export default function DataTable({ data }: DataTableProps) {
   };
 
   const displayData = groupData(data);
-  const columns = Object.keys(displayData[0]);
+  // Strip internal DB columns (e.g. _record_id) — never show underscore-prefixed columns
+  const columns = Object.keys(displayData[0]).filter(col => !col.startsWith('_'));
 
   return (
     <div className="h-full overflow-auto scrollbar-custom bg-[#11141d]">
       <table className="w-full text-left border-collapse text-[13px] whitespace-nowrap">
         <thead>
           <tr>
-            <th className="text-left text-slate-400 font-medium py-3 px-4 border-b border-white/5 sticky top-0 bg-[#252b3d]">Rank</th>
             {columns.map(col => (
               <th key={col} className="text-left text-slate-400 font-medium py-3 px-4 border-b border-white/5 sticky top-0 bg-[#252b3d] whitespace-nowrap">
                 {col}
@@ -54,7 +54,6 @@ export default function DataTable({ data }: DataTableProps) {
         <tbody>
           {displayData.map((row, i) => (
             <tr key={i} className="even:bg-white/[0.02]">
-              <td className="py-3 px-4 border-b border-white/5 text-slate-300 whitespace-nowrap">{i + 1}</td>
               {columns.map(col => (
                 <td key={col} className="py-3 px-4 border-b border-white/5 text-slate-300 whitespace-nowrap">
                   {Array.isArray(row[col]) 
