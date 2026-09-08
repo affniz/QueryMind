@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Auth from './pages/Auth';
 import Dashboard from './pages/Dashboard';
 import Chat from './pages/Chat';
+import FolderChat from './pages/FolderChat';
 import RelationshipMapper from './pages/RelationshipMapper';
 import EmptyDashboard from './pages/EmptyDashboard';
 import { DialogProvider } from './context/DialogContext';
@@ -18,6 +19,7 @@ function App() {
           <Route path="/" element={isAuthenticated ? <Dashboard /> : <Navigate to="/auth" />}>
             <Route index element={<EmptyDashboard />} />
             <Route path="dataset/:id" element={<Chat />} />
+            <Route path="folder/:folderId" element={<FolderChat />} />
             <Route path="relationships" element={<RelationshipMapper />} />
           </Route>
         </Routes>

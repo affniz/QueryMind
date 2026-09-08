@@ -250,40 +250,57 @@ export default function Sidebar({ activeFolder, setActiveFolder, datasets }: Sid
       <div className="flex-1 overflow-y-auto scrollbar-custom pr-2 -mr-2">
         {folders.map(folder => {
           if (searchQuery && !displayGroups[folder.name]) return null;
+          const isActive = activeFolder === folder.name;
+          const isFolderChatActive = location.pathname === `/folder/${encodeURIComponent(folder.name)}`;
 
           return (
           <div key={folder.id} className="mb-2 group/folder">
-            <div className="flex items-center justify-between text-white text-[15px] font-medium py-2 cursor-pointer" onClick={() => toggleFolder(folder.name)}>
-              <div className="flex items-center gap-2">
-                {activeFolder === folder.name ? <FolderOpen size={16} className="text-accent-primary" /> : <Folder size={16} className="text-accent-primary" />}
-                <span>{folder.name}</span>
+            {/* Folder row — clicking name navigates to folder chat */}
+            <div className="flex items-center justify-between text-white text-[15px] font-medium py-2">
+              <div
+                className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer"
+                onClick={() => {
+                  navigate(`/folder/${encodeURIComponent(folder.name)}`);
+                  setActiveFolder(folder.name);
+                }}
+              >
+                {isFolderChatActive
+                  ? <FolderOpen size={16} className="text-accent-primary shrink-0" />
+                  : <Folder size={16} className="text-accent-primary shrink-0" />}
+                <span className={`truncate ${isFolderChatActive ? 'text-accent-primary' : ''}`}>{folder.name}</span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1 shrink-0">
                 <div
                   className="text-slate-400 p-1 rounded-md transition-all cursor-pointer flex items-center justify-center opacity-0 group-hover/folder:opacity-100 hover:text-red-500 hover:bg-red-500/10 hover:shadow-[0_2px_10px_rgba(239,68,68,0.15)]"
                   onClick={(e) => deleteFolder(e, folder.id, folder.name)}
-                  title={'Delete folder "' + folder.name + '"'}
+                  title={`Delete folder "${folder.name}"`}
                 >
                   <Trash2 size={14} />
                 </div>
-                {activeFolder === folder.name && (
-                  <label
-                    onClick={e => e.stopPropagation()}
-                    className="text-slate-400 p-1 rounded-md transition-all cursor-pointer flex items-center justify-center hover:text-accent-primary hover:bg-accent-primary/15 hover:shadow-[0_2px_10px_rgba(167,139,250,0.2)]"
-                    title={'Upload directly to ' + folder.name}
-                  >
-                    <Plus size={14} />
-                    <input type="file" accept=".csv" className="hidden" onChange={(e) => handleUpload(e, folder.id)} style={{ display: 'none' }} />
-                  </label>
-                )}
-                <div className="text-slate-400 p-1 rounded-md flex items-center justify-center hover:text-white hover:bg-white/10 transition-colors">
-                  {activeFolder === folder.name ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                {/* Upload into this folder */}
+                <label
+                  onClick={e => e.stopPropagation()}
+                  className="text-slate-400 p-1 rounded-md transition-all cursor-pointer flex items-center justify-center opacity-0 group-hover/folder:opacity-100 hover:text-accent-primary hover:bg-accent-primary/15 hover:shadow-[0_2px_10px_rgba(167,139,250,0.2)]"
+                  title={`Upload CSV to ${folder.name}`}
+                >
+                  <Plus size={14} />
+                  <input type="file" accept=".csv" className="hidden" onChange={(e) => handleUpload(e, folder.id)} style={{ display: 'none' }} />
+                </label>
+                <div
+                  className="text-slate-400 p-1 rounded-md flex items-center justify-center hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                  onClick={() => toggleFolder(folder.name)}
+                >
+                  {isActive ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </div>
               </div>
             </div>
 
-            {(activeFolder === folder.name || searchQuery) && (
-              <div className="pl-5 flex flex-col gap-1 mt-1 mb-4">
+            {/* Dataset list inside folder — shown when expanded */}
+            {(isActive || searchQuery) && (
+              <div className="pl-5 flex flex-col gap-1 mt-1 mb-3">
+                {(displayGroups[folder.name] ?? []).length === 0 && (
+                  <span className="text-slate-600 text-xs italic">No datasets yet</span>
+                )}
                 {(displayGroups[folder.name] ?? []).map(ds => (
                   <Link
                     key={ds.id}
@@ -300,9 +317,9 @@ export default function Sidebar({ activeFolder, setActiveFolder, datasets }: Sid
                       onClick={(e) => deleteDataset(e, ds.id)}
                       title="Delete Dataset"
                     >
-                      <Trash2 size={14} />
+                      <Trash2 size={12} />
                     </div>
-                  </Link>
+                  </div>
                 ))}
               </div>
             )}

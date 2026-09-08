@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     RATE_LIMIT_WINDOW_SECONDS: int = 60
     CORS_ORIGINS: List[str] = Field(
         default=[
+            "http://localhost:3000",
+            "http://localhost:3001",
             "http://localhost:5173",
             "http://localhost:5174",
             "http://127.0.0.1:5173",
