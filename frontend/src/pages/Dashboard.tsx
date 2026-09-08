@@ -28,6 +28,9 @@ export default function Dashboard() {
 
   const logout = () => {
     localStorage.removeItem('token');
+    // Clear folder/dataset-mapping state so they don't bleed into the next session
+    localStorage.removeItem('qm_folders');
+    localStorage.removeItem('qm_ds_folders');
     navigate('/auth');
     window.location.reload();
   };

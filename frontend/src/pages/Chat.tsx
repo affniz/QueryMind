@@ -1,21 +1,47 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { X, Sparkles, GripHorizontal, Code2, ChevronDown } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '../utils/api';
-import { Dataset, HistoryEntry, Message } from '../types';
+import { Dataset, HistoryEntry, Message, ChatSession } from '../types';
 import AutoChart from '../components/chat/AutoChart';
 import DataTable from '../components/chat/DataTable';
 import MessageList from '../components/chat/MessageList';
 import ChatInput from '../components/chat/ChatInput';
+import ChatSessionPanel from '../components/chat/ChatSessionPanel';
+import ExportButton from '../components/chat/ExportButton';
+import { useChatSessions } from '../hooks/useChatSessions';
 
 const API_BASE = import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000';
 
+/** Number of past conversation turns (user+assistant pairs) sent to the LLM. */
 const MAX_HISTORY_TURNS = 3;
+
+/** Decode the numeric user ID from the JWT stored in localStorage. Returns null if unavailable. */
+function getUserIdFromToken(): number | null {
+  try {
+    const token = localStorage.getItem('token');
+    if (!token) return null;
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return typeof payload.id === 'number' ? payload.id : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Slugify a string for use as a filename stem. */
+function toSlug(s: string) {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_|_$/g, '')
+    .slice(0, 40);
+}
 
 export default function Chat() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { datasets } = useOutletContext<{ activeFolder: string | null; datasets: Dataset[] }>();
 
   // Compute the IDs of all datasets in the same folder as the current one.
@@ -25,12 +51,19 @@ export default function Chat() {
   const folderDatasetIds = datasets
     .filter(ds => (ds.folder_id ?? null) === currentFolderId)
     .map(ds => Number(ds.id));
+
+  // ── Chat messages state ─────────────────────────────────────────────────
   const [messages, setMessages] = useState<Message[]>([]);
   const [isAsking, setIsAsking] = useState(false);
-  // The SQL and results of the most recent response, displayed in the right panel.
+
+  // ── Active session ──────────────────────────────────────────────────────
+  const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
+
+  // ── Results panel state ─────────────────────────────────────────────────
   const [activeSql, setActiveSql] = useState<string | null>(null);
   const [activeResults, setActiveResults] = useState<any[]>([]);
   const [activeQuestion, setActiveQuestion] = useState<string>('');
+
   // Keep a ref to the active SSE reader so we can cancel it if needed.
   const readerRef = useRef<ReadableStreamDefaultReader<Uint8Array> | null>(null);
 
@@ -94,7 +127,7 @@ export default function Chat() {
   }, []);
 
 
-  // Fetch Dataset Info & Preview
+  // ── Fetch Dataset Info & Preview ────────────────────────────────────────
   const { data: datasetInfo, isLoading: isDatasetLoading } = useQuery<Dataset>({
     queryKey: ['dataset', id],
     queryFn: async () => {
@@ -111,7 +144,17 @@ export default function Chat() {
     }
   });
 
-  // Reset all panel state whenever the selected dataset changes
+  // ── Chat session hooks ──────────────────────────────────────────────────
+  const { sessions, isLoadingSessions, createSession, renameSession, deleteSession } =
+    useChatSessions(id ? { type: 'dataset', id } : undefined);
+
+  // ── Export filename ─────────────────────────────────────────────────────
+  const userId = getUserIdFromToken();
+  const exportFilename = datasetInfo
+    ? `u${userId ?? 'x'}_d${id}_${toSlug(datasetInfo.name)}`
+    : `u${userId ?? 'x'}_d${id}_results`;
+
+  // ── Reset state when the dataset changes ────────────────────────────────
   useEffect(() => {
     setMessages([]);
     setActiveSql(null);
@@ -119,11 +162,12 @@ export default function Chat() {
     setActiveQuestion('');
     setSplitPct(50);
     setSqlExpanded(false);
+    setActiveSessionId(null);
   }, [id]);
 
-  // Initialize messages and preview panel once data is ready
+  // ── Initialize messages and preview panel once data is ready ────────────
   useEffect(() => {
-    if (datasetInfo && !isPreviewPending && previewData) {
+    if (datasetInfo && !isPreviewPending && previewData && activeSessionId === null) {
       setMessages([{
         role: 'system',
         content: `I'm ready to answer questions about the ${datasetInfo.name} dataset.`,
@@ -133,7 +177,60 @@ export default function Chat() {
       setActiveResults(previewData || []);
       setActiveQuestion(`Data Overview: ${datasetInfo.name}`);
     }
-  }, [datasetInfo, previewData, isPreviewPending]);
+  }, [datasetInfo, previewData, isPreviewPending, activeSessionId]);
+
+  // ── Load a session (restore its messages) ──────────────────────────────
+  const loadSession = async (session: ChatSession) => {
+    setActiveSessionId(session.id);
+    setActiveSql(null);
+    setActiveResults([]);
+    setActiveQuestion('');
+
+    try {
+      const res = await api.get(`/chats/${session.id}`);
+      const detail = res.data;
+      const restored: Message[] = (detail.messages ?? []).map((m: any) => ({
+        role: m.role === 'user' ? 'user' : 'system',
+        content: m.content,
+        sql: m.sql ?? null,
+        results: m.results ?? [],
+      }));
+
+      // Set the results panel to the last assistant message that has data
+      const lastAssistant = [...restored].reverse().find(m => m.role === 'system' && m.results?.length);
+      if (lastAssistant) {
+        setActiveResults(lastAssistant.results ?? []);
+        setActiveSql(lastAssistant.sql ?? null);
+        const lastUser = [...restored].reverse().find(m => m.role === 'user');
+        setActiveQuestion(lastUser?.content ?? session.title);
+      }
+
+      setMessages(restored.length > 0 ? restored : [{
+        role: 'system',
+        content: `Resumed session: "${session.title}". Ask me anything about this dataset.`,
+        results: [],
+        sql: null,
+      }]);
+    } catch {
+      setMessages([{
+        role: 'system',
+        content: `Resumed session: "${session.title}". Ask me anything about this dataset.`,
+        results: [],
+        sql: null,
+      }]);
+    }
+  };
+
+  // ── Start a new chat session ────────────────────────────────────────────
+  const handleNewChat = async (firstQuestion?: string) => {
+    const title = firstQuestion
+      ? firstQuestion.slice(0, 80)
+      : `Chat ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+    const session = await createSession(title);
+    setActiveSessionId(session.id);
+    return session.id;
+  };
 
   /**
    * Build the history array from the current messages state.
@@ -145,7 +242,7 @@ export default function Chat() {
     for (const msg of currentMessages) {
       if (msg.role === 'user') {
         history.push({ role: 'user', content: msg.content });
-      } else if (msg.role === 'system' && msg.content && !msg.content.startsWith("I'm ready")) {
+      } else if (msg.role === 'system' && msg.content && !msg.content.startsWith("I'm ready") && !msg.content.startsWith('Resumed')) {
         history.push({ role: 'assistant', content: msg.content });
       }
     }
@@ -153,6 +250,12 @@ export default function Chat() {
   };
 
   const handleSubmit = async (input: string) => {
+    // On the very first question of a session-less chat, create the session now
+    let sessionId = activeSessionId;
+    if (sessionId === null) {
+      sessionId = await handleNewChat(input);
+    }
+
     const userMessage: Message = { role: 'user', content: input };
     const history = buildHistory(messages);
 
@@ -180,7 +283,12 @@ export default function Chat() {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ question: input, history, folder_dataset_ids: folderDatasetIds }),
+        body: JSON.stringify({
+          question: input,
+          history,
+          folder_dataset_ids: folderDatasetIds,
+          session_id: sessionId,
+        }),
       });
 
       if (!response.ok || !response.body) {
@@ -257,6 +365,8 @@ export default function Chat() {
                   };
                   return updated;
                 });
+                // Refresh session list so updated_at re-sorts
+                queryClient.invalidateQueries({ queryKey: ['chat-sessions', id] });
               } else if (eventType === 'error') {
                 setMessages(prev => {
                   const updated = [...prev];
@@ -290,6 +400,49 @@ export default function Chat() {
     }
   };
 
+  const handleDeleteSession = async (sessionId: number) => {
+    await deleteSession(sessionId);
+    if (activeSessionId === sessionId) {
+      // Reset to the fresh "no session" view
+      setActiveSessionId(null);
+      if (datasetInfo && previewData) {
+        setMessages([{
+          role: 'system',
+          content: `I'm ready to answer questions about the ${datasetInfo.name} dataset.`,
+          results: previewData || [],
+          sql: null,
+        }]);
+        setActiveResults(previewData || []);
+        setActiveQuestion(`Data Overview: ${datasetInfo.name}`);
+      } else {
+        setMessages([]);
+        setActiveResults([]);
+      }
+    }
+  };
+
+  const handleSelectSession = (session: ChatSession) => {
+    loadSession(session);
+  };
+
+  const handleNewChatButton = async () => {
+    setActiveSessionId(null);
+    if (datasetInfo && previewData) {
+      setMessages([{
+        role: 'system',
+        content: `I'm ready to answer questions about the ${datasetInfo.name} dataset.`,
+        results: previewData || [],
+        sql: null,
+      }]);
+      setActiveResults(previewData || []);
+      setActiveQuestion(`Data Overview: ${datasetInfo.name}`);
+    } else {
+      setMessages([]);
+      setActiveResults([]);
+      setActiveQuestion('');
+    }
+  };
+
   return (
     <div ref={outerContainerRef} className="flex-1 flex min-w-0 h-full overflow-hidden">
       {/* Left: Chat Assistant */}
@@ -315,6 +468,15 @@ export default function Chat() {
           <>
             <MessageList messages={messages} isLoading={isAsking} />
             <ChatInput onSubmit={handleSubmit} isLoading={isAsking} />
+            <ChatSessionPanel
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              isLoading={isLoadingSessions}
+              onNew={handleNewChatButton}
+              onSelect={handleSelectSession}
+              onRename={(sessionId, title) => renameSession({ sessionId, title })}
+              onDelete={handleDeleteSession}
+            />
           </>
         )}
       </div>
@@ -398,6 +560,16 @@ export default function Chat() {
               <div className="flex-1 min-h-0 overflow-auto">
                 <DataTable data={activeResults} />
               </div>
+            </div>
+
+            <div className="flex items-center justify-between mt-2 p-4 border-t border-white/5 shrink-0 gap-4">
+              <details className="text-slate-500 text-xs flex-1 min-w-0">
+                <summary className="cursor-pointer hover:text-slate-300 transition-colors w-fit">View Raw JSON</summary>
+                <pre className="bg-[#11141d] p-3 rounded-md overflow-x-auto mt-2 whitespace-pre-wrap break-words border border-white/5">
+                  {JSON.stringify(activeResults, null, 2)}
+                </pre>
+              </details>
+              <ExportButton data={activeResults} defaultFilename={exportFilename} />
             </div>
           </div>
         ) : (
