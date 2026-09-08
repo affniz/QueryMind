@@ -1,0 +1,5 @@
+# Frontend .dockerignore — used when building the frontend image (context: ./frontend)
+node_modules/
+dist/
+.git/
+*.md

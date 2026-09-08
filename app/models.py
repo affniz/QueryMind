@@ -26,6 +26,7 @@ class Folder(Base):
 
     owner = relationship("User", back_populates="folders")
     datasets = relationship("Dataset", back_populates="folder")
+    chat_sessions = relationship("ChatSession", back_populates="folder", cascade="all, delete")
 
 class Dataset(Base):
     __tablename__="datasets"
@@ -45,6 +46,8 @@ class Dataset(Base):
 
     owner = relationship("User", back_populates="datasets")
     folder = relationship("Folder", back_populates="datasets")
+    # Dataset-scoped sessions (for uncategorized datasets only)
+    chat_sessions = relationship("ChatSession", back_populates="dataset", cascade="all, delete")
 
 class Relationship(Base):
     __tablename__ = "relationships"
@@ -57,3 +60,42 @@ class Relationship(Base):
 
     source_dataset = relationship("Dataset", foreign_keys=[source_dataset_id])
     target_dataset = relationship("Dataset", foreign_keys=[target_dataset_id])
+
+
+class ChatSession(Base):
+    __tablename__ = "chat_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    title: Mapped[str] = mapped_column(nullable=False)
+    # Exactly one of dataset_id or folder_id is set.
+    # folder_id  → folder-scoped session (preferred for categorised datasets)
+    # dataset_id → dataset-scoped session (uncategorised datasets)
+    dataset_id: Mapped[Optional[int]] = mapped_column(ForeignKey("datasets.id", ondelete="CASCADE"), nullable=True)
+    folder_id: Mapped[Optional[int]] = mapped_column(ForeignKey("folders.id", ondelete="CASCADE"), nullable=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    dataset = relationship("Dataset", back_populates="chat_sessions")
+    folder = relationship("Folder", back_populates="chat_sessions")
+    owner = relationship("User")
+    messages = relationship("ChatMessage", back_populates="session", cascade="all, delete", order_by="ChatMessage.created_at")
+
+
+class ChatMessage(Base):
+    __tablename__ = "chat_messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    session_id: Mapped[int] = mapped_column(ForeignKey("chat_sessions.id", ondelete="CASCADE"), nullable=False)
+    role: Mapped[str] = mapped_column(nullable=False)          # "user" | "assistant"
+    content: Mapped[str] = mapped_column(nullable=False)
+    sql: Mapped[Optional[str]] = mapped_column(nullable=True)
+    results: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    session = relationship("ChatSession", back_populates="messages")

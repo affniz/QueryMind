@@ -1,0 +1,14 @@
+# Root .dockerignore — used when building the backend image (context: .)
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+.env
+.mypy_cache/
+.pytest_cache/
+venv/
+.git/
+.github/
+frontend/
+tests/
+*.md

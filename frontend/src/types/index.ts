@@ -37,3 +37,24 @@ export interface AskResponse {
   results?: any[];
   sql_query?: string | null;
 }
+
+export interface ChatMessage {
+  id: number;
+  session_id: number;
+  role: 'user' | 'assistant';
+  content: string;
+  sql?: string | null;
+  results?: any[] | null;
+  created_at: string;
+}
+
+export interface ChatSession {
+  id: number;
+  title: string;
+  dataset_id?: number | null;
+  folder_id?: number | null;
+  user_id: number;
+  created_at: string;
+  updated_at: string;
+  messages?: ChatMessage[];
+}

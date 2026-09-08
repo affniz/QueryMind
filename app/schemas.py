@@ -53,6 +53,9 @@ class AskRequest(BaseModel):
     # When provided, the LLM context is scoped to only these datasets,
     # preventing cross-folder data leakage.
     folder_dataset_ids: list[int] | None = None
+    # When provided, the assistant message and SQL/results will be persisted
+    # to this chat session after a successful response.
+    session_id: int | None = None
 
 class AskResponse(BaseModel):
     question:str
@@ -74,3 +77,34 @@ class UserOut(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+# ── Chat session schemas ────────────────────────────────────────────────────────
+
+class ChatSessionCreate(BaseModel):
+    title: str
+
+class ChatSessionRename(BaseModel):
+    title: str
+
+class ChatMessageResponse(BaseModel):
+    id: int
+    session_id: int
+    role: str
+    content: str
+    sql: Optional[str] = None
+    results: Optional[list[Any]] = None
+    created_at: datetime
+    model_config = {"from_attributes": True}
+
+class ChatSessionResponse(BaseModel):
+    id: int
+    title: str
+    dataset_id: Optional[int] = None
+    folder_id: Optional[int] = None
+    user_id: int
+    created_at: datetime
+    updated_at: datetime
+    model_config = {"from_attributes": True}
+
+class ChatSessionDetailResponse(ChatSessionResponse):
+    messages: list[ChatMessageResponse] = []

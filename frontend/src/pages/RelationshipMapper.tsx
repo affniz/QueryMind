@@ -126,7 +126,8 @@ export default function RelationshipMapper() {
 
     setNodes(initialNodes);
     setEdges(initialEdges);
-  }, [allDatasets, allRelationships, activeFolder, folders, setNodes, setEdges]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [allDatasets, allRelationships, activeFolder, folders]);
 
   const addRelMutation = useMutation({
     mutationFn: async (data: any) => {
