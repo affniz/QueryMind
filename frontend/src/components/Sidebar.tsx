@@ -319,7 +319,7 @@ export default function Sidebar({ activeFolder, setActiveFolder, datasets }: Sid
                     >
                       <Trash2 size={12} />
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}

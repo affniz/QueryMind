@@ -232,6 +232,11 @@ All `/datasets/` endpoints require an `Authorization: Bearer <token>` header.
 | `POST` | `/datasets/relationships/auto-detect` | Yes | Auto-detect relationships by matching column names |
 | `DELETE` | `/datasets/relationships/{id}` | Yes | Delete a defined relationship |
 | `POST` | `/datasets/{id}/ask` | Yes | Ask a plain-English question (streaming SSE response) |
+| `GET` | `/chats/` | Yes | List chat sessions (`?type=dataset&id=1` or `?type=folder&id=2`) |
+| `POST` | `/chats/` | Yes | Create a new chat session |
+| `GET` | `/chats/{session_id}` | Yes | Get a chat session with full message history |
+| `PATCH` | `/chats/{session_id}` | Yes | Rename a chat session |
+| `DELETE` | `/chats/{session_id}` | Yes | Delete a chat session and its messages |
 
 ## Example
 
@@ -390,3 +395,5 @@ Render auto-deploys the backend and frontend on every push to `main` after the i
 - **v5** ✅ — Full-stack release. React + Vite + TypeScript frontend with a complete UI. One-click Render deployment via `render.yaml` Blueprint (FastAPI backend, React frontend, PostgreSQL, Redis). `GET /health` endpoint for Render health checks. `setup_readonly.py` for automated read-only user provisioning at container startup.
 
 - **v5.1** ✅ — Folder isolation and config cleanup. Datasets can be organised into folders in the UI; the LLM context is now scoped to only the datasets within the active folder, preventing cross-folder data leakage. `GROQ_MODEL` is fully env-driven with no hardcoded fallback.
+
+- **v6** ✅ — Chat history and data export. Persistent chat sessions per dataset and per folder — conversations are saved to the database and can be resumed, renamed, or deleted. Query results can be exported as CSV or JSON with a customisable filename. UI layout upgraded to a resizable horizontal split between the chart and table panels. Folder chat now shows the correct dataset count and resolves folder membership from the server rather than a stale localStorage map. Auto-logout after one hour of inactivity (no mouse, keyboard, touch, or scroll activity) — distinct from JWT expiry, so active users are never interrupted mid-session.

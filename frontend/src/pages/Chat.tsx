@@ -554,8 +554,9 @@ export default function Chat() {
               className="flex flex-col overflow-hidden bg-[#191e2b] min-w-0"
               style={{ width: `${100 - splitPct}%` }}
             >
-              <div className="flex items-center px-4 py-2.5 border-b border-white/5 shrink-0">
+              <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/5 shrink-0">
                 <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Table</span>
+                <ExportButton data={activeResults} defaultFilename={exportFilename} />
               </div>
               <div className="flex-1 min-h-0 overflow-auto">
                 <DataTable data={activeResults} />

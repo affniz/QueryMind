@@ -34,36 +34,18 @@ export default function FolderChat() {
   const queryClient = useQueryClient();
   const { datasets } = useOutletContext<{ activeFolder: string | null; datasets: Dataset[] }>();
 
-  // Datasets that belong to this folder
-  const datasetFolderMap: Record<string, string> = JSON.parse(localStorage.getItem('qm_ds_folders') || '{}');
-  const folderDatasets = datasets.filter(ds => datasetFolderMap[ds.id] === folderId);
-
-  // Try to derive folder name from local storage folders list
-  // folderId here is the folder name (legacy) — but we want the DB id.
-  // We resolve via the /folders API at load time.
+  // Folder resolution state — must be declared before folderDatasets
   const [folderDbId, setFolderDbId] = useState<number | null>(null);
   const [folderName, setFolderName] = useState<string>(folderId ?? 'Folder');
   const [folderLoading, setFolderLoading] = useState(true);
 
-  // Resolve folder DB id from name
-  useEffect(() => {
-    if (!folderId) { setFolderLoading(false); return; }
-    setFolderLoading(true);
-    api.get('/folders/').then(res => {
-      const found = res.data.find((f: any) => f.name === folderId);
-      if (found) {
-        setFolderDbId(found.id);
-        setFolderName(found.name);
-      }
-    }).catch(() => {
-      // Folder lookup failed — don't keep the input permanently blocked
-    }).finally(() => {
-      setFolderLoading(false);
-    });
-  }, [folderId]);
+  // Datasets that belong to this folder — resolved from server data via folderDbId
+  const folderDatasets = folderDbId
+    ? datasets.filter(ds => ds.folder_id === folderDbId)
+    : [];
 
   // ── Messages & panel state ───────────────────────────────────────────────
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<Message[]>([{ role: 'system', content: 'Loading folder…', results: [], sql: null }]);
   const [isAsking, setIsAsking] = useState(false);
   const [activeSessionId, setActiveSessionId] = useState<number | null>(null);
   const [activeSql, setActiveSql] = useState<string | null>(null);
@@ -101,20 +83,44 @@ export default function FolderChat() {
   const userId = getUserIdFromToken();
   const exportFilename = `u${userId ?? 'x'}_folder_${toSlug(folderName)}_results`;
 
-  // ── Reset when folder changes ────────────────────────────────────────────
+  // Resolve folder DB id from name
   useEffect(() => {
-    setMessages([{
-      role: 'system',
-      content: `I'm ready to answer questions across all ${folderDatasets.length} table${folderDatasets.length !== 1 ? 's' : ''} in "${folderName}". Ask me anything — I can JOIN across tables.`,
-      results: [],
-      sql: null,
-    }]);
+    if (!folderId) { setFolderLoading(false); return; }
+    setFolderLoading(true);
+    api.get('/folders/').then(res => {
+      const found = res.data.find((f: any) => f.name === folderId);
+      if (found) {
+        setFolderDbId(found.id);
+        setFolderName(found.name);
+      }
+    }).catch(() => {}).finally(() => {
+      setFolderLoading(false);
+    });
+  }, [folderId]);
+
+  // ── Reset immediately when folder route changes ───────────────────────────
+  useEffect(() => {
+    setFolderDbId(null);
+    setFolderLoading(true);
+    setMessages([{ role: 'system', content: 'Loading folder…', results: [], sql: null }]);
     setActiveResults([]);
     setActiveSql(null);
     setActiveQuestion('');
     setActiveSessionId(null);
     setTableHeightPx(null);
   }, [folderId]);
+
+  // ── Update welcome message once folder & datasets are resolved ────────────
+  useEffect(() => {
+    if (folderLoading || !folderDbId) return;
+    const count = datasets.filter(ds => ds.folder_id === folderDbId).length;
+    setMessages([{
+      role: 'system',
+      content: `I'm ready to answer questions across all ${count} table${count !== 1 ? 's' : ''} in "${folderName}". Ask me anything — I can JOIN across tables.`,
+      results: [],
+      sql: null,
+    }]);
+  }, [folderDbId, folderLoading]);
 
   // ── Load session ─────────────────────────────────────────────────────────
   const loadSession = async (session: ChatSession) => {

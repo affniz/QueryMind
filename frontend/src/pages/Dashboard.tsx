@@ -4,6 +4,7 @@ import Sidebar from '../components/Sidebar';
 import { BrainCircuit, User, LogOut } from 'lucide-react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useDatasets } from '../hooks/useDatasets';
+import { useInactivityLogout } from '../hooks/useInactivityLogout';
 
 export default function Dashboard() {
   const location = useLocation();
@@ -34,6 +35,9 @@ export default function Dashboard() {
     navigate('/auth');
     window.location.reload();
   };
+
+  // Auto-logout after 1 hour of inactivity (no mouse/keyboard/touch/scroll)
+  useInactivityLogout(logout);
 
   return (
     <div className="flex items-center justify-center h-screen w-screen bg-main-gradient p-8 box-border">
