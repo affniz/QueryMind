@@ -522,47 +522,49 @@ export default function Chat() {
         </div>
 
         {activeResults && activeResults.length > 0 ? (
-          /* Horizontal split container */
-          <div
-            ref={splitContainerRef}
-            className="flex-1 flex overflow-hidden rounded-xl border border-accent-primary/30 min-h-0"
-          >
-            {/* Left: Chart */}
+          <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+            {/* Horizontal split container */}
             <div
-              className="flex flex-col overflow-hidden bg-[#191e2b] min-w-0"
-              style={{ width: `${splitPct}%` }}
+              ref={splitContainerRef}
+              className="flex-1 flex overflow-hidden rounded-xl border border-accent-primary/30 min-h-0"
             >
-              <div className="flex items-center px-4 py-2.5 border-b border-white/5 shrink-0">
-                <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Chart</span>
+              {/* Left: Chart */}
+              <div
+                className="flex flex-col overflow-hidden bg-[#191e2b] min-w-0"
+                style={{ width: `${splitPct}%` }}
+              >
+                <div className="flex items-center px-4 py-2.5 border-b border-white/5 shrink-0">
+                  <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Chart</span>
+                </div>
+                <div className="flex-1 min-h-0 p-4">
+                  <AutoChart data={activeResults} />
+                </div>
               </div>
-              <div className="flex-1 min-h-0 p-4">
-                <AutoChart data={activeResults} />
+
+              {/* Vertical drag handle */}
+              <div
+                onMouseDown={onDragStart}
+                className="flex items-center justify-center w-3 cursor-col-resize group shrink-0 border-l border-r border-white/5 bg-[#11141d] hover:bg-[#1e2435] transition-colors select-none"
+                title="Drag to resize"
+              >
+                <GripHorizontal size={12} className="text-slate-600 group-hover:text-slate-400 transition-colors rotate-90" />
+              </div>
+
+              {/* Right: Table */}
+              <div
+                className="flex flex-col overflow-hidden bg-[#191e2b] min-w-0"
+                style={{ width: `${100 - splitPct}%` }}
+              >
+                <div className="flex items-center px-4 py-2.5 border-b border-white/5 shrink-0">
+                  <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Table</span>
+                </div>
+                <div className="flex-1 min-h-0 overflow-auto">
+                  <DataTable data={activeResults} />
+                </div>
               </div>
             </div>
 
-            {/* Vertical drag handle */}
-            <div
-              onMouseDown={onDragStart}
-              className="flex items-center justify-center w-3 cursor-col-resize group shrink-0 border-l border-r border-white/5 bg-[#11141d] hover:bg-[#1e2435] transition-colors select-none"
-              title="Drag to resize"
-            >
-              <GripHorizontal size={12} className="text-slate-600 group-hover:text-slate-400 transition-colors rotate-90" />
-            </div>
-
-            {/* Right: Table */}
-            <div
-              className="flex flex-col overflow-hidden bg-[#191e2b] min-w-0"
-              style={{ width: `${100 - splitPct}%` }}
-            >
-              <div className="flex items-center justify-between px-4 py-2.5 border-b border-white/5 shrink-0">
-                <span className="text-xs font-medium text-slate-400 uppercase tracking-wider">Table</span>
-                <ExportButton data={activeResults} defaultFilename={exportFilename} />
-              </div>
-              <div className="flex-1 min-h-0 overflow-auto">
-                <DataTable data={activeResults} />
-              </div>
-            </div>
-
+            {/* Footer: View Raw JSON + Export */}
             <div className="flex items-center justify-between mt-2 p-4 border-t border-white/5 shrink-0 gap-4">
               <details className="text-slate-500 text-xs flex-1 min-w-0">
                 <summary className="cursor-pointer hover:text-slate-300 transition-colors w-fit">View Raw JSON</summary>

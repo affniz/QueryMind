@@ -133,7 +133,7 @@ export default function ExportButton({ data, defaultFilename }: ExportButtonProp
 
       {/* Dropdown menu */}
       {open && !pendingFormat && (
-        <div className="absolute right-0 top-full mt-1 bg-[#191e2b] border border-white/10 rounded-lg overflow-hidden shadow-xl z-50 min-w-[140px]">
+        <div className="absolute right-0 bottom-full mb-1 bg-[#191e2b] border border-white/10 rounded-lg overflow-hidden shadow-xl z-50 min-w-[140px]">
           <button
             onClick={() => selectFormat('csv')}
             className="flex items-center gap-2 w-full px-4 py-2.5 text-sm text-slate-300 hover:bg-white/5 hover:text-white transition-colors"
