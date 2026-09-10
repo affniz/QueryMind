@@ -1,5 +1,10 @@
 # QueryMind
 
+[![CI](https://github.com/affniz/QueryMind/actions/workflows/ci.yml/badge.svg)](https://github.com/affniz/QueryMind/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Python](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/)
+[![Node](https://img.shields.io/badge/node-20+-green.svg)](https://nodejs.org/)
+
 QueryMind is a full-stack application that lets you upload CSVs and ask plain-English questions about your data through a React UI. It uses a large language model to convert natural language into SQL, executes the query safely against your data, and streams the answer back in real time — no SQL knowledge required.
 
 ## How it works
@@ -8,6 +13,23 @@ QueryMind is a full-stack application that lets you upload CSVs and ask plain-En
 2. Upload one or more CSV files — each file becomes a queryable table
 3. Optionally organise datasets into folders and define relationships between them
 4. Ask a question in plain English — QueryMind generates SQL, validates it for safety, executes it against your data using a read-only connection, and streams a plain-English answer back in real time alongside the generated SQL
+
+## Architecture
+
+```mermaid
+graph TD
+    A["React + Vite + TypeScript<br/>(localhost:5173)"] -->|"REST / SSE (JWT)"| B["FastAPI Backend<br/>(localhost:8000)"]
+    B -->|"Read/Write (SQLAlchemy)"| C[("PostgreSQL<br/>dynamic tables per dataset")]
+    B -->|"Read-Only Queries<br/>(readonly_user role)"| C
+    B -->|"Cache (24h TTL)"| D[("Redis")]
+    B -->|"Text-to-SQL &amp; Answer Generation"| E["Groq LLM API"]
+
+    style A fill:#61dafb,color:#000
+    style B fill:#009688,color:#fff
+    style C fill:#336791,color:#fff
+    style D fill:#dc382d,color:#fff
+    style E fill:#f97316,color:#fff
+```
 
 ## Tech stack
 
@@ -39,6 +61,37 @@ QueryMind applies two independent layers of protection against SQL injection att
 
 2. **Read-only database connection** — All LLM-generated queries execute through a dedicated `readonly_user` PostgreSQL role provisioned automatically via Alembic migration. Even if a query somehow bypassed the guard, the database role itself has no write permissions and no access to system tables.
 
+## Authentication
+
+All protected endpoints require a JWT `Bearer` token in the `Authorization` header. Tokens are issued on login and expire after `ACCESS_TOKEN_EXPIRE_MINUTES` minutes (default: 60).
+
+**Token lifecycle:**
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant A as FastAPI
+    participant D as PostgreSQL
+
+    C->>A: POST /auth/register {email, password}
+    A->>D: Store hashed password (bcrypt)
+    D-->>A: User created
+    A-->>C: 201 Created
+
+    C->>A: POST /auth/login {username, password}
+    A->>D: Lookup user, verify hash
+    D-->>A: User record
+    A-->>C: {access_token, token_type: "bearer"}
+
+    Note over C,A: Token expires after ACCESS_TOKEN_EXPIRE_MINUTES
+
+    C->>A: POST /datasets/upload<br/>Authorization: Bearer &lt;token&gt;
+    A->>A: Validate JWT (python-jose)<br/>Extract user_id
+    A-->>C: 200 OK (or 401 if invalid/expired)
+```
+
+> Tokens are signed with `SECRET_KEY` using the `ALGORITHM` (default: `HS256`). There is no refresh-token flow — users must log in again after expiry.
+
 ## Getting started
 
 ### Prerequisites
@@ -66,7 +119,23 @@ pip install -r requirements-dev.txt
 
 ### Environment variables
 
-Create a `.env` file in the root directory:
+Create a `.env` file in the project root. For local development (no Docker):
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `DATABASE_URL` | ✅ Yes | — | SQLAlchemy connection string for the main (read-write) PostgreSQL connection. Use `postgresql+psycopg://user:pass@localhost/dbname` locally. |
+| `READONLY_DATABASE_URL` | ✅ Yes | — | SQLAlchemy connection string for the read-only PostgreSQL role used to execute all LLM-generated queries. |
+| `DB_USER` | ✅ Yes | — | PostgreSQL username (used by Docker Compose to build connection strings). |
+| `DB_PASSWORD` | ✅ Yes | — | PostgreSQL password. |
+| `DB_NAME` | ✅ Yes | — | PostgreSQL database name. |
+| `GROQ_API_KEY` | ✅ Yes | — | API key from [console.groq.com](https://console.groq.com). |
+| `GROQ_MODEL` | ✅ Yes | — | Groq model ID to use (e.g. `openai/gpt-oss-120b`, `llama-3.3-70b-versatile`). No hardcoded fallback. |
+| `REDIS_URL` | ✅ Yes | — | Redis connection URL (e.g. `redis://localhost:6379`). |
+| `SECRET_KEY` | ✅ Yes | — | Random secret used to sign JWT tokens. Generate with `openssl rand -hex 32`. |
+| `ALGORITHM` | No | `HS256` | JWT signing algorithm. |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | No | `60` | JWT lifetime in minutes. |
+
+**Example `.env` for local development:**
 
 ```
 DATABASE_URL=postgresql+psycopg://your_username:your_password@localhost/your_db_name
@@ -82,7 +151,7 @@ ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=60
 ```
 
-> **Note:** `DATABASE_URL` uses `localhost` for local development. When running via Docker, both URLs are built automatically by `docker-compose.yml` — you do not need to change them.
+> **Docker note:** When running via Docker, `DATABASE_URL` and `READONLY_DATABASE_URL` are built automatically by `docker-compose.yml` — you only need `DB_USER`, `DB_PASSWORD`, `DB_NAME`, and the other variables above.
 
 > **`GROQ_MODEL`** — any model available on your Groq account can be used here (e.g. `openai/gpt-oss-120b`, `llama-3.3-70b-versatile`, `mixtral-8x7b-32768`). There is no hardcoded fallback; this field is required.
 
@@ -96,6 +165,34 @@ uvicorn app.main:app --reload
 The `alembic upgrade head` step runs database migrations and provisions the `readonly_user` PostgreSQL role automatically.
 
 Visit `http://127.0.0.1:8000/docs` for interactive API documentation.
+
+## Frontend development
+
+The frontend is a Vite dev server run separately from the backend.
+
+### Prerequisites
+
+- Node.js 20+
+
+### Setup & run
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The UI will be available at `http://localhost:5173`.
+
+### Other commands
+
+| Command | Description |
+|---|---|
+| `npm run build` | Production build (outputs to `frontend/dist/`) |
+| `npm run lint` | Lint with oxlint |
+| `npm run preview` | Preview the production build locally |
+
+> The frontend communicates with the backend at `http://localhost:8000` by default. When deploying, set `CORS_ORIGINS` on the backend to the frontend's public URL.
 
 ## Docker setup
 
@@ -136,12 +233,12 @@ ACCESS_TOKEN_EXPIRE_MINUTES=60
 docker-compose up --build
 ```
 
-The API will be available at `http://localhost:8000`
+The API will be available at `http://localhost:8000`  
 Swagger UI: `http://localhost:8000/docs`
 
 #### 4. Start the frontend
 
-The frontend is a Vite dev server run separately. In a new terminal:
+See [Frontend development](#frontend-development) above. In a new terminal:
 
 ```bash
 cd frontend
@@ -380,20 +477,14 @@ A GitHub Actions workflow runs the full test suite automatically on every push a
 
 Render auto-deploys the backend and frontend on every push to `main` after the initial setup — no manual intervention required.
 
-## Version history
+## Contributing
 
-- **v1** — Initial prototype. Single-user, single-table CSV upload with plain-English question answering via Groq. No authentication, no persistence layer.
+Contributions are welcome! Please read [CONTRIBUTING.md](./CONTRIBUTING.md) for branch naming conventions, commit message format, code style guidelines, and how to run the test suite locally.
 
-- **v2** ✅ — JWT authentication and per-user dataset isolation. Each user's data is stored in namespaced PostgreSQL tables and inaccessible to other accounts.
+## Changelog
 
-- **v3** ✅ — Multi-table support. Users can upload multiple CSVs, define foreign-key relationships between them, and ask questions that require cross-table JOINs. Relationships can also be auto-detected by matching column names.
+Full version history is in [CHANGELOG.md](./CHANGELOG.md). Latest release: **v6.0.0** — chat history, data export, and resizable UI panels.
 
-- **v3.1** ✅ — Security hardening and performance. SQL injection protection via `sqlparse` (SELECT-only allowlist, table allowlist). Read-only PostgreSQL role provisioned automatically via Alembic migration. High-speed CSV ingestion using PostgreSQL `COPY` protocol (~30x faster than row-by-row INSERT). Specific exception handling with structured logging throughout.
+## License
 
-- **v4** ✅ — Developer experience and API completeness. All endpoints converted to `async def`; Groq API calls offloaded via `asyncio.to_thread` for non-blocking concurrency. `GET /datasets/{id}/preview` endpoint returns raw data rows via read-only connection. `GET /datasets/` is paginated (`skip`/`limit`). `/ask` responses now include the raw `results` rows alongside the plain-English answer. SQL guard extended to accept `WITH ... AS` CTEs. `User` model gains a `created_at` timestamp.
-
-- **v5** ✅ — Full-stack release. React + Vite + TypeScript frontend with a complete UI. One-click Render deployment via `render.yaml` Blueprint (FastAPI backend, React frontend, PostgreSQL, Redis). `GET /health` endpoint for Render health checks. `setup_readonly.py` for automated read-only user provisioning at container startup.
-
-- **v5.1** ✅ — Folder isolation and config cleanup. Datasets can be organised into folders in the UI; the LLM context is now scoped to only the datasets within the active folder, preventing cross-folder data leakage. `GROQ_MODEL` is fully env-driven with no hardcoded fallback.
-
-- **v6** ✅ — Chat history and data export. Persistent chat sessions per dataset and per folder — conversations are saved to the database and can be resumed, renamed, or deleted. Query results can be exported as CSV or JSON with a customisable filename. UI layout upgraded to a resizable horizontal split between the chart and table panels. Folder chat now shows the correct dataset count and resolves folder membership from the server rather than a stale localStorage map. Auto-logout after one hour of inactivity (no mouse, keyboard, touch, or scroll activity) — distinct from JWT expiry, so active users are never interrupted mid-session.
+[MIT](./LICENSE) © Affan Nizami
